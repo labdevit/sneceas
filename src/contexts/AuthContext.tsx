@@ -6,35 +6,45 @@ import {
   useEffect,
   type ReactNode,
 } from "react";
-import { loginApi, type AuthResponse } from "@/lib/authApi";
+import { loginApi, type AuthResponse, type AuthUser } from "@/lib/authApi";
 
 // ── Types ────────────────────────────────────────────────────────────
-export type UserRole =
-  | "admin"
-  | "delegue"
-  | "adherent"
-  | "secretaire"
-  | string;
+/** Role codes retournés par l'API */
+export type RoleCode = string;
 
 interface AuthState {
   token: string | null;
-  role: UserRole | null;
+  user: AuthUser | null;
 }
 
-interface AuthContextValue extends AuthState {
+interface AuthContextValue {
+  token: string | null;
+  user: AuthUser | null;
   /** true when a token is present */
   isAuthenticated: boolean;
-  /** Call the backend, store token + role, return role */
+  /** Call the backend, store token + user, return response */
   login: (username: string, password: string) => Promise<AuthResponse>;
   /** Clear session */
   logout: () => void;
-  /** Check if current user has one of the allowed roles */
-  hasRole: (...roles: UserRole[]) => boolean;
+  /** Check if current user has one of the allowed role_codes */
+  hasRole: (...roleCodes: RoleCode[]) => boolean;
+  /** Convenience: primary role_code (first in list) */
+  primaryRole: string | null;
 }
 
 // ── Storage keys ─────────────────────────────────────────────────────
 const TOKEN_KEY = "snecea_token";
-const ROLE_KEY = "snecea_role";
+const USER_KEY = "snecea_user";
+
+// ── Helpers ──────────────────────────────────────────────────────────
+function loadUser(): AuthUser | null {
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    return raw ? (JSON.parse(raw) as AuthUser) : null;
+  } catch {
+    return null;
+  }
+}
 
 // ── Context ──────────────────────────────────────────────────────────
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -43,7 +53,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [auth, setAuth] = useState<AuthState>(() => ({
     token: localStorage.getItem(TOKEN_KEY),
-    role: localStorage.getItem(ROLE_KEY) as UserRole | null,
+    user: loadUser(),
   }));
 
   // Keep localStorage in sync
@@ -53,45 +63,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } else {
       localStorage.removeItem(TOKEN_KEY);
     }
-    if (auth.role) {
-      localStorage.setItem(ROLE_KEY, auth.role);
+    if (auth.user) {
+      localStorage.setItem(USER_KEY, JSON.stringify(auth.user));
     } else {
-      localStorage.removeItem(ROLE_KEY);
+      localStorage.removeItem(USER_KEY);
     }
   }, [auth]);
 
   const login = useCallback(
     async (username: string, password: string): Promise<AuthResponse> => {
       const data = await loginApi(username, password);
-      setAuth({ token: data.token, role: data.role });
+      setAuth({ token: data.token, user: data.user });
       return data;
     },
     []
   );
 
   const logout = useCallback(() => {
-    setAuth({ token: null, role: null });
+    setAuth({ token: null, user: null });
     localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(ROLE_KEY);
+    localStorage.removeItem(USER_KEY);
   }, []);
 
   const hasRole = useCallback(
-    (...roles: UserRole[]) => {
-      if (!auth.role) return false;
-      return roles.includes(auth.role);
+    (...roleCodes: RoleCode[]) => {
+      if (!auth.user?.roles?.length) return false;
+      // super_admin ou is_superuser a accès à tout
+      if (auth.user.is_superuser) return true;
+      return auth.user.roles.some((r) => roleCodes.includes(r.role_code));
     },
-    [auth.role]
+    [auth.user]
   );
+
+  const primaryRole =
+    auth.user?.is_superuser
+      ? "super_admin"
+      : auth.user?.roles?.[0]?.role_code ?? null;
 
   return (
     <AuthContext.Provider
       value={{
         token: auth.token,
-        role: auth.role,
+        user: auth.user,
         isAuthenticated: !!auth.token,
         login,
         logout,
         hasRole,
+        primaryRole,
       }}
     >
       {children}

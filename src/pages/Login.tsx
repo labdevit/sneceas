@@ -27,11 +27,15 @@ export default function Login() {
     setIsLoading(true);
 
     try {
-      const { role } = await login(formData.email, formData.password);
+      const { user } = await login(formData.email, formData.password);
+
+      const roleName = user.is_superuser
+        ? 'Super Admin'
+        : user.roles?.[0]?.role_name ?? 'Utilisateur';
 
       toast({
         title: 'Connexion réussie',
-        description: `Bienvenue sur la plateforme SNECEA. Rôle : ${role}`,
+        description: `Bienvenue ${user.name || user.username}. Rôle : ${roleName}`,
       });
 
       navigate(from, { replace: true });
