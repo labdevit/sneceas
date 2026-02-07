@@ -1,14 +1,17 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Eye, EyeOff, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
+  const { login } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -16,20 +19,31 @@ export default function Login() {
     password: '',
   });
 
+  // Redirect back to the page the user came from, or default to dashboard
+  const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/';
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Simulate login
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    try {
+      const { role } = await login(formData.email, formData.password);
 
-    toast({
-      title: 'Connexion réussie',
-      description: 'Bienvenue sur la plateforme SNECEA.',
-    });
+      toast({
+        title: 'Connexion réussie',
+        description: `Bienvenue sur la plateforme SNECEA. Rôle : ${role}`,
+      });
 
-    navigate('/');
-    setIsLoading(false);
+      navigate(from, { replace: true });
+    } catch (err) {
+      toast({
+        variant: 'destructive',
+        title: 'Échec de connexion',
+        description: err instanceof Error ? err.message : 'Identifiants incorrects.',
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

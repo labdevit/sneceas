@@ -3,6 +3,8 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AppLayout } from "@/components/layout/AppLayout";
 import Dashboard from "@/pages/Dashboard";
 import SubmitRequest from "@/pages/SubmitRequest";
@@ -27,29 +29,37 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          {/* Auth routes */}
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          
-          {/* App routes with layout */}
-          <Route element={<AppLayout />}>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/submit" element={<SubmitRequest />} />
-            <Route path="/tickets" element={<TicketsList />} />
-            <Route path="/tickets/:id" element={<TicketDetail />} />
-            <Route path="/calendar" element={<Calendar />} />
-            <Route path="/poles" element={<Poles />} />
-            <Route path="/delegates" element={<Delegates />} />
-            <Route path="/documents" element={<Documents />} />
-            <Route path="/communication" element={<Communication />} />
-            <Route path="/admin" element={<Admin />} />
-            <Route path="/reports" element={<Reports />} />
-          </Route>
-          
-          {/* 404 */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <AuthProvider>
+          <Routes>
+            {/* Auth routes (public) */}
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            
+            {/* Protected app routes — any authenticated user */}
+            <Route element={<ProtectedRoute />}>
+              <Route element={<AppLayout />}>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/submit" element={<SubmitRequest />} />
+                <Route path="/tickets" element={<TicketsList />} />
+                <Route path="/tickets/:id" element={<TicketDetail />} />
+                <Route path="/calendar" element={<Calendar />} />
+                <Route path="/poles" element={<Poles />} />
+                <Route path="/delegates" element={<Delegates />} />
+                <Route path="/documents" element={<Documents />} />
+                <Route path="/communication" element={<Communication />} />
+                <Route path="/reports" element={<Reports />} />
+
+                {/* Admin only */}
+                <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
+                  <Route path="/admin" element={<Admin />} />
+                </Route>
+              </Route>
+            </Route>
+            
+            {/* 404 */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
