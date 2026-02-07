@@ -305,6 +305,7 @@ export default function SubmitRequest() {
                   </Tooltip>
                 ))}
               </div>
+            </div>
 
             <div>
               <h2 className="text-lg font-semibold mb-4">Niveau d'urgence *</h2>
