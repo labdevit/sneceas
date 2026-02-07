@@ -4,7 +4,7 @@ import { urgencyLabels } from '@/lib/mock-data';
 import { AlertTriangle, AlertCircle, AlertOctagon, Circle } from 'lucide-react';
 
 interface UrgencyBadgeProps {
-  urgency: TicketUrgency;
+  urgency: string;
   showIcon?: boolean;
   size?: 'sm' | 'md' | 'lg';
   className?: string;
@@ -50,7 +50,7 @@ export function UrgencyBadge({
   size = 'md',
   className 
 }: UrgencyBadgeProps) {
-  const config = urgencyConfig[urgency];
+  const config = urgencyConfig[urgency as TicketUrgency] ?? { class: 'bg-muted text-muted-foreground', icon: Circle };
   const Icon = config.icon;
 
   return (
@@ -63,7 +63,7 @@ export function UrgencyBadge({
       )}
     >
       {showIcon && <Icon className={iconSizes[size]} />}
-      {urgencyLabels[urgency]}
+      {urgencyLabels[urgency] ?? urgency}
     </span>
   );
 }

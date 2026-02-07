@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { PERMISSIONS } from "@/lib/acl";
 import Dashboard from "@/pages/Dashboard";
 import SubmitRequest from "@/pages/SubmitRequest";
 import TicketsList from "@/pages/TicketsList";
@@ -35,22 +36,39 @@ const App = () => (
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             
-            {/* Protected app routes — any authenticated user */}
+            {/* Protected app routes — ACL-gated */}
             <Route element={<ProtectedRoute />}>
               <Route element={<AppLayout />}>
+                {/* Accessible à tous les authentifiés */}
                 <Route path="/" element={<Dashboard />} />
-                <Route path="/submit" element={<SubmitRequest />} />
                 <Route path="/tickets" element={<TicketsList />} />
                 <Route path="/tickets/:id" element={<TicketDetail />} />
-                <Route path="/calendar" element={<Calendar />} />
-                <Route path="/poles" element={<Poles />} />
                 <Route path="/delegates" element={<Delegates />} />
                 <Route path="/documents" element={<Documents />} />
                 <Route path="/communication" element={<Communication />} />
-                <Route path="/reports" element={<Reports />} />
 
-                {/* Admin only */}
-                <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
+                {/* Soumission de requête — pas hr_liaison ni auditor */}
+                <Route element={<ProtectedRoute allowedRoles={PERMISSIONS.submit_request} />}>
+                  <Route path="/submit" element={<SubmitRequest />} />
+                </Route>
+
+                {/* Calendrier — pas auditor */}
+                <Route element={<ProtectedRoute allowedRoles={PERMISSIONS.calendar} />}>
+                  <Route path="/calendar" element={<Calendar />} />
+                </Route>
+
+                {/* Pôles — admin, syndic_admin, pole_manager, pole_member, auditor */}
+                <Route element={<ProtectedRoute allowedRoles={PERMISSIONS.poles} />}>
+                  <Route path="/poles" element={<Poles />} />
+                </Route>
+
+                {/* Rapports — management + auditor */}
+                <Route element={<ProtectedRoute allowedRoles={PERMISSIONS.reports} />}>
+                  <Route path="/reports" element={<Reports />} />
+                </Route>
+
+                {/* Administration — super_admin + syndic_admin */}
+                <Route element={<ProtectedRoute allowedRoles={PERMISSIONS.admin} />}>
                   <Route path="/admin" element={<Admin />} />
                 </Route>
               </Route>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, ChevronRight, Upload, X } from 'lucide-react';
+import { Check, ChevronRight, Upload, X, Loader2 } from 'lucide-react';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,17 +15,17 @@ import {
 } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { cn } from '@/lib/utils';
-import { companies, currentUser, ticketTypeDescriptions, ticketTypeLabels, urgencyLabels } from '@/lib/mock-data';
-import type { TicketType, TicketUrgency } from '@/types';
+import { fetchCompanies } from '@/lib/api/companies';
+import { createTicket, type CreateTicketPayload } from '@/lib/api/tickets';
+import { useTicketMeta } from '@/hooks/useTicketMeta';
+import { urgencyLabels, ticketTypeDescriptions } from '@/lib/mock-data';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth, useAcl } from '@/contexts/AuthContext';
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-
-// Seuls les membres et délégués peuvent classifier les requêtes
-const canClassify = currentUser.role === 'member' || currentUser.role === 'delegate';
 
 const stepsSimple = [
   { id: 1, title: 'Identification', description: 'Vérifiez vos informations' },
@@ -37,23 +38,33 @@ const stepsFull = [
   { id: 3, title: 'Détails', description: 'Décrivez la situation' },
 ];
 
-const steps = canClassify ? stepsFull : stepsSimple;
-const totalSteps = steps.length;
-
-const ticketTypes = Object.entries(ticketTypeLabels) as [TicketType, string][];
-const urgencyLevels = Object.entries(urgencyLabels) as [TicketUrgency, string][];
+const urgencyLevels = Object.entries(urgencyLabels) as [string, string][];
 
 export default function SubmitRequest() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { can } = useAcl();
+  const { user } = useAuth();
+  const canClassify = can('ticket_classify');
+  const steps = canClassify ? stepsFull : stepsSimple;
+  const totalSteps = steps.length;
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Fetch companies and ticket types from API
+  const { data: companies = [] } = useQuery({
+    queryKey: ['companies'],
+    queryFn: () => fetchCompanies(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { types: ticketTypes } = useTicketMeta();
+
   // Form state
   const [formData, setFormData] = useState({
-    companyId: currentUser.companyId,
-    type: '' as TicketType | '',
-    urgency: '' as TicketUrgency | '',
+    companyId: '',
+    type: '' as string,
+    urgency: '' as string,
     otherTypeDetails: '',
     subject: '',
     description: '',
@@ -69,8 +80,7 @@ export default function SubmitRequest() {
         case 2:
           return (
             !!formData.type &&
-            !!formData.urgency &&
-            (formData.type !== 'other' || formData.otherTypeDetails.length >= 5)
+            !!formData.urgency
           );
         case 3:
           return formData.subject.length >= 5 && formData.description.length >= 20;
@@ -106,15 +116,36 @@ export default function SubmitRequest() {
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    
-    toast({
-      title: 'Requête envoyée !',
-      description: 'Votre requête a été soumise avec succès. Référence: REQ-2026-0005',
-    });
-    
-    navigate('/tickets');
+    try {
+      const payload: CreateTicketPayload = {
+        subject: formData.subject,
+        description: formData.description,
+        company: formData.companyId,
+      };
+      if (canClassify && formData.type) {
+        payload.ticket_type = formData.type;
+      }
+      if (canClassify && formData.urgency) {
+        payload.urgency = formData.urgency as CreateTicketPayload['urgency'];
+      }
+
+      const ticket = await createTicket(payload);
+
+      toast({
+        title: 'Requête envoyée !',
+        description: `Votre requête a été soumise avec succès. Référence: ${ticket.reference}`,
+      });
+
+      navigate('/tickets');
+    } catch (error: any) {
+      toast({
+        title: 'Erreur',
+        description: error.message || 'Impossible de soumettre la requête.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -127,7 +158,7 @@ export default function SubmitRequest() {
     setFormData({ ...formData, files: newFiles });
   };
 
-  const urgencyColors: Record<TicketUrgency, string> = {
+  const urgencyColors: Record<string, string> = {
     low: 'border-urgency-low text-urgency-low',
     medium: 'border-urgency-medium text-urgency-medium',
     high: 'border-urgency-high text-urgency-high',
@@ -202,7 +233,7 @@ export default function SubmitRequest() {
                 <div>
                   <Label>Nom complet</Label>
                   <Input
-                    value={`${currentUser.firstName} ${currentUser.lastName}`}
+                    value={user?.name || user?.username || ''}
                     disabled
                     className="mt-1.5 bg-muted"
                   />
@@ -210,7 +241,7 @@ export default function SubmitRequest() {
                 <div>
                   <Label>Email</Label>
                   <Input
-                    value={currentUser.email}
+                    value={user?.email || ''}
                     disabled
                     className="mt-1.5 bg-muted"
                   />
@@ -248,54 +279,38 @@ export default function SubmitRequest() {
             <div>
               <h2 className="text-lg font-semibold mb-4">Type de requête *</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {ticketTypes.map(([value, label]) => (
-                  <Tooltip key={value}>
+                {ticketTypes.map((tt) => (
+                  <Tooltip key={tt.id}>
                     <TooltipTrigger asChild>
                       <button
                         type="button"
-                        onClick={() => setFormData({ ...formData, type: value })}
+                        onClick={() => setFormData({ ...formData, type: tt.id })}
                         className={cn(
                           'p-4 rounded-lg border-2 text-left transition-all',
                           'hover:border-primary/50 hover:bg-accent/50',
-                          formData.type === value
+                          formData.type === tt.id
                             ? 'border-primary bg-primary/5'
                             : 'border-border'
                         )}
-                        title={ticketTypeDescriptions[value] ?? label}
+                        title={ticketTypeDescriptions[tt.code] ?? tt.label}
                       >
-                        <span className="font-medium">{label}</span>
+                        <span className="font-medium">{tt.label}</span>
                       </button>
                     </TooltipTrigger>
                     <TooltipContent className="max-w-xs">
                       <p className="text-sm">
-                        {ticketTypeDescriptions[value] ?? label}
+                        {ticketTypeDescriptions[tt.code] ?? tt.label}
                       </p>
                     </TooltipContent>
                   </Tooltip>
                 ))}
               </div>
-              {formData.type === 'other' && (
-                <div className="mt-4">
-                  <Label htmlFor="other-type">Précisez votre type *</Label>
-                  <Input
-                    id="other-type"
-                    placeholder="Ex: Demande liée à..."
-                    value={formData.otherTypeDetails}
-                    onChange={(e) => setFormData({ ...formData, otherTypeDetails: e.target.value })}
-                    className="mt-1.5"
-                  />
-                  <p className="text-sm text-muted-foreground mt-1.5">
-                    Minimum 5 caractères
-                  </p>
-                </div>
-              )}
-            </div>
 
             <div>
               <h2 className="text-lg font-semibold mb-4">Niveau d'urgence *</h2>
               <RadioGroup
                 value={formData.urgency}
-                onValueChange={(value) => setFormData({ ...formData, urgency: value as TicketUrgency })}
+                onValueChange={(value) => setFormData({ ...formData, urgency: value })}
                 className="grid grid-cols-2 md:grid-cols-4 gap-3"
               >
                 {urgencyLevels.map(([value, label]) => (
@@ -312,7 +327,7 @@ export default function SubmitRequest() {
                         'hover:bg-accent/50',
                         'peer-data-[state=checked]:border-2',
                         formData.urgency === value
-                          ? urgencyColors[value as TicketUrgency]
+                          ? urgencyColors[value]
                           : 'border-border'
                       )}
                     >

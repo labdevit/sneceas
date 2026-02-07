@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 
 interface StatusBadgeProps {
-  status: TicketStatus;
+  status: string;
   showIcon?: boolean;
   size?: 'sm' | 'md' | 'lg';
   className?: string;
@@ -70,7 +70,7 @@ export function StatusBadge({
   size = 'md',
   className 
 }: StatusBadgeProps) {
-  const config = statusConfig[status];
+  const config = statusConfig[status as TicketStatus] ?? { class: 'bg-muted text-muted-foreground', icon: Circle };
   const Icon = config.icon;
 
   return (
@@ -83,7 +83,7 @@ export function StatusBadge({
       )}
     >
       {showIcon && <Icon className={cn(iconSizes[size], status === 'processing' && 'animate-spin')} />}
-      {statusLabels[status]}
+      {statusLabels[status] ?? status}
     </span>
   );
 }

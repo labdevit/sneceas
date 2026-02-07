@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Layers, Mail, Plus, Trash2, Users } from 'lucide-react';
+import { Layers, Loader2, Mail, Plus, Trash2, Users } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,18 +21,23 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
-import { poleMembers, poles, users } from '@/lib/mock-data';
-import type { PoleMember } from '@/types';
+import { addPoleMember, fetchPoles, removePoleMember } from '@/lib/api/poles';
+import { fetchUsers } from '@/lib/api/users';
 
 export default function Poles() {
-  const [polesList] = useState(poles);
-  const [selectedPoleId, setSelectedPoleId] = useState(polesList[0]?.id ?? '');
-  const [membersByPole, setMembersByPole] = useState<Record<string, PoleMember[]>>(() => {
-    return poleMembers.reduce((acc, member) => {
-      acc[member.poleId] = [...(acc[member.poleId] ?? []), member];
-      return acc;
-    }, {} as Record<string, PoleMember[]>);
+  const queryClient = useQueryClient();
+
+  const { data: polesList = [], isLoading: isLoadingPoles } = useQuery({
+    queryKey: ['poles'],
+    queryFn: fetchPoles,
   });
+
+  const { data: allUsers = [], isLoading: isLoadingUsers } = useQuery({
+    queryKey: ['users'],
+    queryFn: fetchUsers,
+  });
+
+  const [selectedPoleId, setSelectedPoleId] = useState('');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState('');
 
@@ -40,52 +46,56 @@ export default function Poles() {
     [polesList, selectedPoleId]
   );
 
-  const memberEntries = membersByPole[selectedPole?.id ?? ''] ?? [];
-  const members = memberEntries
-    .map((entry) => ({
-      entry,
-      user: users.find((user) => user.id === entry.userId),
-    }))
-    .filter((item): item is { entry: PoleMember; user: (typeof users)[number] } => !!item.user);
+  const members = selectedPole?.members ?? [];
 
-  const availableUsers = users.filter(
-    (user) => !memberEntries.some((entry) => entry.userId === user.id)
+  const availableUsers = allUsers.filter(
+    (user) => !members.some((member) => member.user === user.id)
   );
+
+  const addMemberMutation = useMutation({
+    mutationFn: addPoleMember,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['poles'] });
+    },
+  });
+
+  const removeMemberMutation = useMutation({
+    mutationFn: removePoleMember,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['poles'] });
+    },
+  });
 
   const handleAddMember = () => {
     if (!selectedPole || !selectedUserId) {
       return;
     }
 
-    const nextRole = memberEntries.length === 0 ? 'head' : 'assistant';
-
-    setMembersByPole((prev) => ({
-      ...prev,
-      [selectedPole.id]: [
-        ...(prev[selectedPole.id] ?? []),
-        {
-          id: `pm-${selectedPole.id}-${selectedUserId}`,
-          poleId: selectedPole.id,
-          userId: selectedUserId,
-          role: nextRole,
-        },
-      ],
-    }));
+    addMemberMutation.mutate({
+      pole: selectedPole.id,
+      user: parseInt(selectedUserId),
+      role: 'assistant',
+    });
 
     setSelectedUserId('');
     setIsAddDialogOpen(false);
   };
 
-  const handleRemoveMember = (userId: string) => {
+  const handleRemoveMember = (memberId: string) => {
     if (!selectedPole) {
       return;
     }
 
-    setMembersByPole((prev) => ({
-      ...prev,
-      [selectedPole.id]: (prev[selectedPole.id] ?? []).filter((entry) => entry.userId !== userId),
-    }));
+    removeMemberMutation.mutate(memberId);
   };
+
+  if (isLoadingPoles || isLoadingUsers) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -167,22 +177,18 @@ export default function Poles() {
                       Aucun membre associé à ce pôle pour le moment.
                     </div>
                   ) : (
-                    members.map(({ entry, user }) => (
+                    members.map((member) => (
                       <div
-                        key={entry.id}
+                        key={member.id}
                         className="flex items-center justify-between rounded-lg border p-3"
                       >
                         <div className="min-w-0">
                           <div className="font-medium">
-                            {user.firstName} {user.lastName}
-                          </div>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                            <Mail className="w-3 h-3" />
-                            <span className="truncate">{user.email}</span>
+                            {member.username}
                           </div>
                           <div className="mt-2">
-                            <Badge variant={entry.role === 'head' ? 'default' : 'secondary'}>
-                              {entry.role === 'head' ? 'Chef de pôle' : 'Assistant'}
+                            <Badge variant={member.role === 'head' ? 'default' : 'secondary'}>
+                              {member.role === 'head' ? 'Chef de pôle' : 'Assistant'}
                             </Badge>
                           </div>
                         </div>
@@ -190,7 +196,7 @@ export default function Poles() {
                           variant="ghost"
                           size="icon"
                           className="text-destructive hover:text-destructive"
-                          onClick={() => handleRemoveMember(user.id)}
+                          onClick={() => handleRemoveMember(member.id)}
                         >
                           <Trash2 className="w-4 h-4" />
                         </Button>
@@ -229,8 +235,8 @@ export default function Poles() {
                   </SelectItem>
                 ) : (
                   availableUsers.map((user) => (
-                    <SelectItem key={user.id} value={user.id}>
-                      {user.firstName} {user.lastName} — {user.email}
+                    <SelectItem key={user.id} value={user.id.toString()}>
+                      {user.name || user.username} — {user.email}
                     </SelectItem>
                   ))
                 )}

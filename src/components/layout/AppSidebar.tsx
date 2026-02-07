@@ -24,28 +24,32 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useAuth, useAcl } from '@/contexts/AuthContext';
+import { SIDEBAR_FEATURES } from '@/lib/acl';
+import type { Feature } from '@/lib/acl';
 
 interface NavItem {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   href: string;
-  roles?: string[];
+  /** La feature ACL correspondante (filtrée automatiquement) */
+  feature?: Feature;
 }
 
 const mainNavItems: NavItem[] = [
-  { label: 'Tableau de bord', icon: LayoutDashboard, href: '/' },
-  { label: 'Soumettre une requête', icon: PlusCircle, href: '/submit' },
-  { label: 'Mes requêtes', icon: FileText, href: '/tickets' },
-  { label: 'Calendrier', icon: CalendarDays, href: '/calendar' },
-  { label: 'Pôles', icon: Layers, href: '/poles' },
-  { label: 'Documents', icon: FolderOpen, href: '/documents' },
-  { label: 'Délégués', icon: Users, href: '/delegates' },
-  { label: 'Communication', icon: Megaphone, href: '/communication' },
+  { label: 'Tableau de bord', icon: LayoutDashboard, href: '/', feature: 'dashboard' },
+  { label: 'Soumettre une requête', icon: PlusCircle, href: '/submit', feature: 'submit_request' },
+  { label: 'Mes requêtes', icon: FileText, href: '/tickets', feature: 'tickets' },
+  { label: 'Calendrier', icon: CalendarDays, href: '/calendar', feature: 'calendar' },
+  { label: 'Pôles', icon: Layers, href: '/poles', feature: 'poles' },
+  { label: 'Documents', icon: FolderOpen, href: '/documents', feature: 'documents' },
+  { label: 'Délégués', icon: Users, href: '/delegates', feature: 'delegates' },
+  { label: 'Communication', icon: Megaphone, href: '/communication', feature: 'communication' },
 ];
 
 const adminNavItems: NavItem[] = [
-  { label: 'Rapports', icon: BarChart3, href: '/reports', roles: ['admin', 'pole_manager'] },
-  { label: 'Administration', icon: Shield, href: '/admin', roles: ['admin'] },
+  { label: 'Rapports', icon: BarChart3, href: '/reports', feature: 'reports' },
+  { label: 'Administration', icon: Shield, href: '/admin', feature: 'admin' },
 ];
 
 const bottomNavItems: NavItem[] = [
@@ -55,6 +59,15 @@ const bottomNavItems: NavItem[] = [
 export function AppSidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const location = useLocation();
+  const { logout } = useAuth();
+  const { can } = useAcl();
+
+  /** Filtre les items selon l'ACL */
+  const filterByAcl = (items: NavItem[]) =>
+    items.filter((item) => !item.feature || can(item.feature));
+
+  const visibleMainItems = filterByAcl(mainNavItems);
+  const visibleAdminItems = filterByAcl(adminNavItems);
 
   const isActive = (href: string) => {
     if (href === '/') return location.pathname === '/';
@@ -137,11 +150,14 @@ export function AppSidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-1">
-        {mainNavItems.map(renderNavItem)}
+        {visibleMainItems.map(renderNavItem)}
         
-        <Separator className="my-4 bg-sidebar-border" />
-        
-        {adminNavItems.map(renderNavItem)}
+        {visibleAdminItems.length > 0 && (
+          <>
+            <Separator className="my-4 bg-sidebar-border" />
+            {visibleAdminItems.map(renderNavItem)}
+          </>
+        )}
       </nav>
 
       {/* Bottom section */}
@@ -151,6 +167,7 @@ export function AppSidebar() {
         <Tooltip delayDuration={0}>
           <TooltipTrigger asChild>
             <button
+              onClick={logout}
               className="sidebar-item w-full text-red-400 hover:text-red-300 hover:bg-red-500/10"
             >
               <LogOut className="w-5 h-5 shrink-0" />

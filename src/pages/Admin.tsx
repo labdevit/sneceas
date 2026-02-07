@@ -53,61 +53,54 @@ import {
   Search,
   Shield,
   Mail,
-  Phone
+  Phone,
+  Loader2
 } from 'lucide-react';
-import { users, companies, poles, delegates } from '@/lib/mock-data';
-import type { User, Company, Pole, Delegate, UserRole } from '@/types';
-
-const roleLabels: Record<UserRole, string> = {
-  admin: 'Administrateur',
-  pole_manager: 'Responsable Pôle',
-  delegate: 'Délégué',
-  member: 'Membre',
-};
-
-const roleBadgeVariants: Record<UserRole, string> = {
-  admin: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
-  pole_manager: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
-  delegate: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-  member: 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400',
-};
+import { fetchUsers } from '@/lib/api/users';
+import { fetchCompanies, createCompany, deleteCompany } from '@/lib/api/companies';
+import { fetchPoles, createPole, deletePole } from '@/lib/api/poles';
+import { fetchDelegates, createDelegate } from '@/lib/api/delegates';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useToast } from '@/hooks/use-toast';
 
 export default function Admin() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
   const [activeTab, setActiveTab] = useState('users');
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Data fetching
+  const { data: usersList = [], isLoading: usersLoading } = useQuery({ queryKey: ['users'], queryFn: fetchUsers });
+  const { data: companiesList = [], isLoading: companiesLoading } = useQuery({ queryKey: ['companies'], queryFn: fetchCompanies });
+  const { data: polesList = [], isLoading: polesLoading } = useQuery({ queryKey: ['poles'], queryFn: fetchPoles });
+  const { data: delegatesList = [], isLoading: delegatesLoading } = useQuery({ queryKey: ['delegates'], queryFn: fetchDelegates });
+
+  const isLoading = usersLoading || companiesLoading || polesLoading || delegatesLoading;
+
   // Users state
-  const [usersList, setUsersList] = useState<User[]>(users);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editingUser, setEditingUser] = useState<any | null>(null);
   const [isUserDialogOpen, setIsUserDialogOpen] = useState(false);
 
   // Companies state
-  const [companiesList, setCompaniesList] = useState<Company[]>(companies);
-  const [editingCompany, setEditingCompany] = useState<Company | null>(null);
+  const [editingCompany, setEditingCompany] = useState<any | null>(null);
   const [isCompanyDialogOpen, setIsCompanyDialogOpen] = useState(false);
 
   // Poles state
-  const [polesList, setPolesList] = useState<Pole[]>(poles);
-  const [editingPole, setEditingPole] = useState<Pole | null>(null);
+  const [editingPole, setEditingPole] = useState<any | null>(null);
   const [isPoleDialogOpen, setIsPoleDialogOpen] = useState(false);
 
   // Delegates state
-  const [delegatesList, setDelegatesList] = useState<Delegate[]>(delegates);
-  const [editingDelegate, setEditingDelegate] = useState<Delegate | null>(null);
+  const [editingDelegate, setEditingDelegate] = useState<any | null>(null);
   const [isDelegateDialogOpen, setIsDelegateDialogOpen] = useState(false);
 
-  const getCompanyName = (companyId: string) => {
-    return companiesList.find(c => c.id === companyId)?.name || 'N/A';
-  };
-
   const filteredUsers = usersList.filter(user => 
-    `${user.firstName} ${user.lastName}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchQuery.toLowerCase())
+    (user.name || user.username || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (user.email || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const filteredCompanies = companiesList.filter(company =>
-    company.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    company.code.toLowerCase().includes(searchQuery.toLowerCase())
+    company.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const filteredPoles = polesList.filter(pole =>
@@ -115,7 +108,7 @@ export default function Admin() {
   );
 
   const filteredDelegates = delegatesList.filter(delegate =>
-    `${delegate.user.firstName} ${delegate.user.lastName}`.toLowerCase().includes(searchQuery.toLowerCase())
+    (delegate.username || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -141,6 +134,14 @@ export default function Admin() {
           className="pl-10"
         />
       </div>
+
+      {/* Loading */}
+      {isLoading && (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="w-6 h-6 animate-spin text-primary" />
+          <span className="ml-2 text-muted-foreground">Chargement des données...</span>
+        </div>
+      )}
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
@@ -188,54 +189,13 @@ export default function Admin() {
                     </DialogDescription>
                   </DialogHeader>
                   <div className="grid gap-4 py-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="firstName">Prénom</Label>
-                        <Input id="firstName" defaultValue={editingUser?.firstName} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="lastName">Nom</Label>
-                        <Input id="lastName" defaultValue={editingUser?.lastName} />
-                      </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="userName">Nom</Label>
+                      <Input id="userName" defaultValue={editingUser?.name || editingUser?.username} />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="email">Email</Label>
                       <Input id="email" type="email" defaultValue={editingUser?.email} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="phone">Téléphone</Label>
-                      <Input id="phone" defaultValue={editingUser?.phone} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="company">Compagnie</Label>
-                        <Select defaultValue={editingUser?.companyId}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Sélectionner" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {companiesList.map(company => (
-                              <SelectItem key={company.id} value={company.id}>
-                                {company.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="role">Rôle</Label>
-                        <Select defaultValue={editingUser?.role || 'member'}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Sélectionner" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="admin">Administrateur</SelectItem>
-                            <SelectItem value="pole_manager">Responsable Pôle</SelectItem>
-                            <SelectItem value="delegate">Délégué</SelectItem>
-                            <SelectItem value="member">Membre</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
                     </div>
                   </div>
                   <DialogFooter>
@@ -255,8 +215,6 @@ export default function Admin() {
                   <TableRow>
                     <TableHead>Nom</TableHead>
                     <TableHead>Email</TableHead>
-                    <TableHead>Compagnie</TableHead>
-                    <TableHead>Rôle</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -264,19 +222,13 @@ export default function Admin() {
                   {filteredUsers.map(user => (
                     <TableRow key={user.id}>
                       <TableCell className="font-medium">
-                        {user.firstName} {user.lastName}
+                        {user.name || user.username}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <Mail className="w-3 h-3" />
                           {user.email}
                         </div>
-                      </TableCell>
-                      <TableCell>{getCompanyName(user.companyId)}</TableCell>
-                      <TableCell>
-                        <Badge className={roleBadgeVariants[user.role]}>
-                          {roleLabels[user.role]}
-                        </Badge>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
@@ -300,14 +252,14 @@ export default function Admin() {
                               <AlertDialogHeader>
                                 <AlertDialogTitle>Supprimer l'utilisateur ?</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  Cette action est irréversible. L'utilisateur {user.firstName} {user.lastName} sera définitivement supprimé.
+                                  Cette action est irréversible. L'utilisateur {user.name || user.username} sera définitivement supprimé.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel>Annuler</AlertDialogCancel>
                                 <AlertDialogAction 
                                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                  onClick={() => setUsersList(usersList.filter(u => u.id !== user.id))}
+                                  onClick={() => setIsUserDialogOpen(false)}
                                 >
                                   Supprimer
                                 </AlertDialogAction>
@@ -354,15 +306,30 @@ export default function Admin() {
                       <Input id="companyName" defaultValue={editingCompany?.name} />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="companyCode">Code</Label>
-                      <Input id="companyCode" defaultValue={editingCompany?.code} placeholder="Ex: AS, SA..." />
+                      <Label htmlFor="companySector">Secteur</Label>
+                      <Input id="companySector" defaultValue={editingCompany?.sector} placeholder="Ex: Agroalimentaire, Transport..." />
                     </div>
                   </div>
                   <DialogFooter>
                     <Button variant="outline" onClick={() => setIsCompanyDialogOpen(false)}>
                       Annuler
                     </Button>
-                    <Button onClick={() => setIsCompanyDialogOpen(false)}>
+                    <Button onClick={async () => {
+                      if (!editingCompany) {
+                        const name = (document.getElementById('companyName') as HTMLInputElement)?.value;
+                        const sector = (document.getElementById('companySector') as HTMLInputElement)?.value;
+                        if (name) {
+                          try {
+                            await createCompany({ name, sector: sector || undefined });
+                            queryClient.invalidateQueries({ queryKey: ['companies'] });
+                            toast({ title: 'Compagnie créée avec succès' });
+                          } catch (e) {
+                            toast({ title: 'Erreur lors de la création', variant: 'destructive' });
+                          }
+                        }
+                      }
+                      setIsCompanyDialogOpen(false);
+                    }}>
                       {editingCompany ? 'Enregistrer' : 'Créer'}
                     </Button>
                   </DialogFooter>
@@ -374,15 +341,13 @@ export default function Admin() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nom</TableHead>
-                    <TableHead>Code</TableHead>
-                    <TableHead>Utilisateurs</TableHead>
+                    <TableHead>Secteur</TableHead>
+                    <TableHead>Statut</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredCompanies.map(company => {
-                    const userCount = usersList.filter(u => u.companyId === company.id).length;
-                    return (
+                  {filteredCompanies.map(company => (
                       <TableRow key={company.id}>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
@@ -391,9 +356,16 @@ export default function Admin() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline">{company.code}</Badge>
+                          <Badge variant="outline">{company.sector || '-'}</Badge>
                         </TableCell>
-                        <TableCell>{userCount} utilisateur{userCount > 1 ? 's' : ''}</TableCell>
+                        <TableCell>
+                          <Badge className={company.active
+                            ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                            : 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400'
+                          }>
+                            {company.active ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             <Button
@@ -423,7 +395,15 @@ export default function Admin() {
                                   <AlertDialogCancel>Annuler</AlertDialogCancel>
                                   <AlertDialogAction 
                                     className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                    onClick={() => setCompaniesList(companiesList.filter(c => c.id !== company.id))}
+                                    onClick={async () => {
+                                      try {
+                                        await deleteCompany(company.id);
+                                        queryClient.invalidateQueries({ queryKey: ['companies'] });
+                                        toast({ title: 'Compagnie supprimée' });
+                                      } catch (e) {
+                                        toast({ title: 'Erreur lors de la suppression', variant: 'destructive' });
+                                      }
+                                    }}
                                   >
                                     Supprimer
                                   </AlertDialogAction>
@@ -433,8 +413,7 @@ export default function Admin() {
                           </div>
                         </TableCell>
                       </TableRow>
-                    );
-                  })}
+                  ))}
                 </TableBody>
               </Table>
             </CardContent>
@@ -483,7 +462,22 @@ export default function Admin() {
                     <Button variant="outline" onClick={() => setIsPoleDialogOpen(false)}>
                       Annuler
                     </Button>
-                    <Button onClick={() => setIsPoleDialogOpen(false)}>
+                    <Button onClick={async () => {
+                      if (!editingPole) {
+                        const name = (document.getElementById('poleName') as HTMLInputElement)?.value;
+                        const description = (document.getElementById('poleDescription') as HTMLTextAreaElement)?.value;
+                        if (name) {
+                          try {
+                            await createPole({ name, description: description || undefined });
+                            queryClient.invalidateQueries({ queryKey: ['poles'] });
+                            toast({ title: 'Pôle créé avec succès' });
+                          } catch (e) {
+                            toast({ title: 'Erreur lors de la création', variant: 'destructive' });
+                          }
+                        }
+                      }
+                      setIsPoleDialogOpen(false);
+                    }}>
                       {editingPole ? 'Enregistrer' : 'Créer'}
                     </Button>
                   </DialogFooter>
@@ -540,7 +534,15 @@ export default function Admin() {
                                 <AlertDialogCancel>Annuler</AlertDialogCancel>
                                 <AlertDialogAction 
                                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                  onClick={() => setPolesList(polesList.filter(p => p.id !== pole.id))}
+                                  onClick={async () => {
+                                    try {
+                                      await deletePole(pole.id);
+                                      queryClient.invalidateQueries({ queryKey: ['poles'] });
+                                      toast({ title: 'Pôle supprimé' });
+                                    } catch (e) {
+                                      toast({ title: 'Erreur lors de la suppression', variant: 'destructive' });
+                                    }
+                                  }}
                                 >
                                   Supprimer
                                 </AlertDialogAction>
@@ -584,14 +586,14 @@ export default function Admin() {
                   <div className="grid gap-4 py-4">
                     <div className="space-y-2">
                       <Label htmlFor="delegateUser">Utilisateur</Label>
-                      <Select defaultValue={editingDelegate?.userId}>
+                      <Select defaultValue={editingDelegate?.user?.toString()}>
                         <SelectTrigger>
                           <SelectValue placeholder="Sélectionner un utilisateur" />
                         </SelectTrigger>
                         <SelectContent>
                           {usersList.map(user => (
-                            <SelectItem key={user.id} value={user.id}>
-                              {user.firstName} {user.lastName}
+                            <SelectItem key={user.id} value={user.id.toString()}>
+                              {user.name || user.username}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -599,7 +601,7 @@ export default function Admin() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="delegateCompany">Compagnie</Label>
-                      <Select defaultValue={editingDelegate?.companyId}>
+                      <Select defaultValue={editingDelegate?.company}>
                         <SelectTrigger>
                           <SelectValue placeholder="Sélectionner une compagnie" />
                         </SelectTrigger>
@@ -623,7 +625,7 @@ export default function Admin() {
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <Switch id="delegateActive" defaultChecked={editingDelegate?.isActive ?? true} />
+                      <Switch id="delegateActive" defaultChecked={editingDelegate?.active ?? true} />
                       <Label htmlFor="delegateActive">Délégué actif</Label>
                     </div>
                   </div>
@@ -631,7 +633,9 @@ export default function Admin() {
                     <Button variant="outline" onClick={() => setIsDelegateDialogOpen(false)}>
                       Annuler
                     </Button>
-                    <Button onClick={() => setIsDelegateDialogOpen(false)}>
+                    <Button onClick={() => {
+                      setIsDelegateDialogOpen(false);
+                    }}>
                       {editingDelegate ? 'Enregistrer' : 'Créer'}
                     </Button>
                   </DialogFooter>
@@ -655,10 +659,10 @@ export default function Admin() {
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
                           <UserCheck className="w-4 h-4 text-muted-foreground" />
-                          {delegate.user.firstName} {delegate.user.lastName}
+                          {delegate.username}
                         </div>
                       </TableCell>
-                      <TableCell>{delegate.company.name}</TableCell>
+                      <TableCell>{delegate.company_name}</TableCell>
                       <TableCell>
                         <div className="space-y-1 text-sm">
                           <div className="flex items-center gap-1 text-muted-foreground">
@@ -672,11 +676,11 @@ export default function Admin() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge className={delegate.isActive 
+                        <Badge className={delegate.active 
                           ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
                           : 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400'
                         }>
-                          {delegate.isActive ? 'Actif' : 'Inactif'}
+                          {delegate.active ? 'Actif' : 'Inactif'}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
@@ -701,14 +705,17 @@ export default function Admin() {
                               <AlertDialogHeader>
                                 <AlertDialogTitle>Supprimer le délégué ?</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  Cette action est irréversible. Le délégué {delegate.user.firstName} {delegate.user.lastName} sera définitivement supprimé.
+                                  Cette action est irréversible. Le délégué {delegate.username} sera définitivement supprimé.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel>Annuler</AlertDialogCancel>
                                 <AlertDialogAction 
                                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                  onClick={() => setDelegatesList(delegatesList.filter(d => d.id !== delegate.id))}
+                                  onClick={() => {
+                                    // TODO: add deleteDelegate API call when available
+                                    queryClient.invalidateQueries({ queryKey: ['delegates'] });
+                                  }}
                                 >
                                   Supprimer
                                 </AlertDialogAction>

@@ -1,41 +1,25 @@
 import { useState } from 'react';
-import { Search, Megaphone, Calendar, User, Paperclip, Globe, Building2 } from 'lucide-react';
+import { Search, Megaphone, Calendar, Loader2, ExternalLink, CircleDot } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
-import { communicationPosts, companies } from '@/lib/mock-data';
+import { useQuery } from '@tanstack/react-query';
+import { fetchNotifications } from '@/lib/api/notifications';
 import { cn } from '@/lib/utils';
-
-const visibilityLabels = {
-  global: 'Tous les adhérents',
-  company: 'Par compagnie',
-  pole: 'Par pôle',
-};
-
-const visibilityIcons = {
-  global: Globe,
-  company: Building2,
-  pole: Megaphone,
-};
 
 export default function Communication() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [visibilityFilter, setVisibilityFilter] = useState('all');
 
-  const filteredPosts = communicationPosts.filter((post) => {
-    const matchesSearch =
-      post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      post.content.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesVisibility =
-      visibilityFilter === 'all' || post.visibility === visibilityFilter;
-    return matchesSearch && matchesVisibility;
+  const { data: notifications = [], isLoading } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: fetchNotifications,
+  });
+
+  const filtered = notifications.filter((n) => {
+    const q = searchQuery.toLowerCase();
+    return (
+      n.title.toLowerCase().includes(q) ||
+      n.message.toLowerCase().includes(q)
+    );
   });
 
   return (
@@ -53,63 +37,70 @@ export default function Communication() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
-            placeholder="Rechercher une publication..."
+            placeholder="Rechercher une notification..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10"
           />
         </div>
-        <Select value={visibilityFilter} onValueChange={setVisibilityFilter}>
-          <SelectTrigger className="w-full sm:w-48">
-            <SelectValue placeholder="Visibilité" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Toutes</SelectItem>
-            <SelectItem value="global">Globales</SelectItem>
-            <SelectItem value="company">Par compagnie</SelectItem>
-            <SelectItem value="pole">Par pôle</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
-      {/* Posts */}
-      <div className="space-y-6">
-        {filteredPosts.length === 0 ? (
-          <div className="text-center py-12 bg-card rounded-xl border">
-            <Megaphone className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground">Aucune publication trouvée</p>
-          </div>
-        ) : (
-          filteredPosts.map((post) => {
-            const VisibilityIcon = visibilityIcons[post.visibility];
-            const targetCompany =
-              post.visibility === 'company'
-                ? companies.find((c) => c.id === post.targetId)
-                : null;
-
-            return (
+      {/* Notifications */}
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {filtered.length === 0 ? (
+            <div className="text-center py-12 bg-card rounded-xl border">
+              <Megaphone className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">Aucune notification trouvée</p>
+            </div>
+          ) : (
+            filtered.map((notification) => (
               <article
-                key={post.id}
-                className="bg-card rounded-xl border shadow-card overflow-hidden card-interactive"
+                key={notification.id}
+                className={cn(
+                  'bg-card rounded-xl border shadow-card overflow-hidden card-interactive',
+                  !notification.read && 'border-primary/40'
+                )}
               >
                 <div className="p-6">
                   {/* Header */}
-                  <div className="flex items-start justify-between gap-4 mb-4">
+                  <div className="flex items-start justify-between gap-4 mb-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                        <Megaphone className="w-5 h-5 text-primary" />
+                      <div
+                        className={cn(
+                          'w-10 h-10 rounded-full flex items-center justify-center',
+                          notification.read
+                            ? 'bg-muted'
+                            : 'bg-primary/10'
+                        )}
+                      >
+                        <Megaphone
+                          className={cn(
+                            'w-5 h-5',
+                            notification.read
+                              ? 'text-muted-foreground'
+                              : 'text-primary'
+                          )}
+                        />
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <VisibilityIcon className="w-4 h-4 text-muted-foreground" />
-                          <span className="text-sm text-muted-foreground">
-                            {visibilityLabels[post.visibility]}
-                            {targetCompany && ` — ${targetCompany.name}`}
-                          </span>
+                          <h2 className={cn('text-lg font-semibold', !notification.read && 'font-bold')}>
+                            {notification.title}
+                          </h2>
+                          {!notification.read && (
+                            <Badge variant="default" className="text-[10px] px-1.5 py-0">
+                              Nouveau
+                            </Badge>
+                          )}
                         </div>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
                           <Calendar className="w-3 h-3" />
-                          {new Date(post.createdAt).toLocaleDateString('fr-FR', {
+                          {new Date(notification.created_at).toLocaleDateString('fr-FR', {
                             day: 'numeric',
                             month: 'long',
                             year: 'numeric',
@@ -117,59 +108,47 @@ export default function Communication() {
                         </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Title */}
-                  <h2 className="text-xl font-bold mb-3">{post.title}</h2>
+                    <CircleDot
+                      className={cn(
+                        'w-4 h-4 mt-1 shrink-0',
+                        notification.read ? 'text-muted-foreground/40' : 'text-primary'
+                      )}
+                    />
+                  </div>
 
                   {/* Content */}
                   <p className="text-muted-foreground leading-relaxed">
-                    {post.content}
+                    {notification.message}
                   </p>
 
-                  {/* Attachments */}
-                  {post.attachments.length > 0 && (
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {post.attachments.map((file) => (
-                        <Badge
-                          key={file.id}
-                          variant="secondary"
-                          className="cursor-pointer hover:bg-secondary/80"
-                        >
-                          <Paperclip className="w-3 h-3 mr-1" />
-                          {file.name}
-                        </Badge>
-                      ))}
+                  {/* Link */}
+                  {notification.link && (
+                    <div className="mt-4">
+                      <a
+                        href={notification.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        Voir
+                      </a>
                     </div>
                   )}
-
-                  <Separator className="my-4" />
-
-                  {/* Author */}
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center">
-                      <User className="w-4 h-4 text-secondary-foreground" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">
-                        {post.author.firstName} {post.author.lastName}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Bureau national
-                      </p>
-                    </div>
-                  </div>
                 </div>
               </article>
-            );
-          })
-        )}
-      </div>
+            ))
+          )}
+        </div>
+      )}
 
       {/* Summary */}
-      <p className="text-sm text-muted-foreground">
-        {filteredPosts.length} publication(s)
-      </p>
+      {!isLoading && (
+        <p className="text-sm text-muted-foreground">
+          {filtered.length} notification(s)
+        </p>
+      )}
     </div>
   );
 }

@@ -123,3 +123,22 @@ export function useAuth() {
   if (!ctx) throw new Error("useAuth must be used inside <AuthProvider>");
   return ctx;
 }
+
+// ── ACL hook (dépend de useAuth + acl.ts) ────────────────────────────
+import { canAccess, type Feature } from "@/lib/acl";
+
+/**
+ * Raccourci : vérifie si l'utilisateur courant a accès à une feature.
+ * Utilise la matrice ACL centralisée de src/lib/acl.ts.
+ */
+export function useAcl() {
+  const { user } = useAuth();
+
+  const userRoleCodes = user?.roles?.map((r) => r.role_code) ?? [];
+  const isSuperuser = user?.is_superuser ?? false;
+
+  /** Vérifie l'accès à une feature */
+  const can = (feature: Feature) => canAccess(feature, userRoleCodes, isSuperuser);
+
+  return { can, userRoleCodes, isSuperuser };
+}

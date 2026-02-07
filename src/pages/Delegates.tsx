@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Phone, Mail, Building2, User } from 'lucide-react';
+import { Search, Phone, Mail, Building2, User, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -10,19 +10,40 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { delegates, companies } from '@/lib/mock-data';
+import { fetchDelegates } from '@/lib/api/delegates';
+import { fetchCompanies } from '@/lib/api/companies';
+import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 
 export default function Delegates() {
   const [searchQuery, setSearchQuery] = useState('');
   const [companyFilter, setCompanyFilter] = useState('all');
 
-  const filteredDelegates = delegates.filter((delegate) => {
-    const fullName = `${delegate.user.firstName} ${delegate.user.lastName}`.toLowerCase();
-    const matchesSearch = fullName.includes(searchQuery.toLowerCase());
-    const matchesCompany = companyFilter === 'all' || delegate.companyId === companyFilter;
-    return matchesSearch && matchesCompany && delegate.isActive;
+  const { data: delegates = [], isLoading: isLoadingDelegates } = useQuery({
+    queryKey: ['delegates'],
+    queryFn: fetchDelegates,
   });
+
+  const { data: companies = [], isLoading: isLoadingCompanies } = useQuery({
+    queryKey: ['companies'],
+    queryFn: fetchCompanies,
+  });
+
+  const isLoading = isLoadingDelegates || isLoadingCompanies;
+
+  const filteredDelegates = delegates.filter((delegate) => {
+    const matchesSearch = delegate.username.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCompany = companyFilter === 'all' || delegate.company === companyFilter;
+    return matchesSearch && matchesCompany && delegate.active;
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -76,17 +97,17 @@ export default function Delegates() {
               <div className="flex items-start gap-4">
                 <div className="w-14 h-14 bg-primary/10 rounded-full flex items-center justify-center shrink-0">
                   <span className="text-lg font-bold text-primary">
-                    {delegate.user.firstName[0]}{delegate.user.lastName[0]}
+                    {delegate.username.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
                   </span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <h3 className="font-semibold truncate">
-                    {delegate.user.firstName} {delegate.user.lastName}
+                    {delegate.username}
                   </h3>
                   <div className="flex items-center gap-2 mt-1">
                     <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
                     <span className="text-sm text-muted-foreground">
-                      {delegate.company.name}
+                      {delegate.company_name}
                     </span>
                   </div>
                   <Badge variant="secondary" className="mt-2">

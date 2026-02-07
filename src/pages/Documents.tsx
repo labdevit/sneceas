@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, FolderOpen, FileText, Download, Calendar, ChevronRight } from 'lucide-react';
+import { Search, FolderOpen, FileText, Download, Calendar, ChevronRight, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,30 +15,36 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { documents, poles } from '@/lib/mock-data';
+import { fetchDocuments } from '@/lib/api/documents';
+import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 
 export default function Documents() {
   const [searchQuery, setSearchQuery] = useState('');
   const [yearFilter, setYearFilter] = useState('all');
-  const [openCategories, setOpenCategories] = useState<string[]>(['Conventions', 'Rémunération']);
+  const [openCategories, setOpenCategories] = useState<string[]>([]);
 
-  const years = [...new Set(documents.map((d) => d.year))].sort((a, b) => b - a);
+  const { data: documents = [], isLoading } = useQuery({
+    queryKey: ['documents'],
+    queryFn: fetchDocuments,
+  });
+
+  const years = [...new Set(documents.map((d) => new Date(d.created_at).getFullYear()))].sort((a, b) => b - a);
 
   const filteredDocuments = documents.filter((doc) => {
-    const matchesSearch = doc.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesYear = yearFilter === 'all' || doc.year === parseInt(yearFilter);
+    const matchesSearch = doc.title.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesYear = yearFilter === 'all' || new Date(doc.created_at).getFullYear() === parseInt(yearFilter);
     return matchesSearch && matchesYear;
   });
 
-  // Group by category
-  const groupedDocuments = filteredDocuments.reduce((acc, doc) => {
-    if (!acc[doc.category]) {
-      acc[doc.category] = [];
+  // Group by document_type
+  const groupedDocuments = filteredDocuments.reduce<Record<string, typeof documents>>((acc, doc) => {
+    if (!acc[doc.document_type]) {
+      acc[doc.document_type] = [];
     }
-    acc[doc.category].push(doc);
+    acc[doc.document_type].push(doc);
     return acc;
-  }, {} as Record<string, typeof documents>);
+  }, {});
 
   const toggleCategory = (category: string) => {
     setOpenCategories((prev) =>
@@ -47,6 +53,14 @@ export default function Documents() {
         : [...prev, category]
     );
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -136,26 +150,20 @@ export default function Documents() {
                           <FileText className="w-5 h-5 text-secondary-foreground" />
                         </div>
                         <div>
-                          <p className="font-medium">{doc.name}</p>
+                          <p className="font-medium">{doc.title}</p>
                           <div className="flex items-center gap-3 mt-1">
                             <div className="flex items-center gap-1 text-xs text-muted-foreground">
                               <Calendar className="w-3 h-3" />
-                              {doc.year}
+                              {new Date(doc.created_at).getFullYear()}
                             </div>
-                            {doc.pole && (
-                              <Badge variant="outline" className="text-xs">
-                                {doc.pole.name}
-                              </Badge>
-                            )}
-                            <Badge variant="secondary" className="text-xs">
-                              v{doc.version}
-                            </Badge>
                           </div>
                         </div>
                       </div>
-                      <Button variant="ghost" size="sm">
-                        <Download className="w-4 h-4 mr-2" />
-                        Télécharger
+                      <Button variant="ghost" size="sm" asChild>
+                        <a href={doc.file} target="_blank" rel="noopener noreferrer">
+                          <Download className="w-4 h-4 mr-2" />
+                          Télécharger
+                        </a>
                       </Button>
                     </div>
                   ))}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -36,30 +36,11 @@ import {
   CheckCircle2,
   Clock
 } from 'lucide-react';
-import { adminDashboardStats, companies, statusLabels, urgencyLabels } from '@/lib/mock-data';
-
-// Data for charts
-const ticketsByUrgency = [
-  { name: 'Faible', value: adminDashboardStats.ticketsByUrgency.low, color: 'hsl(var(--urgency-low))' },
-  { name: 'Moyenne', value: adminDashboardStats.ticketsByUrgency.medium, color: 'hsl(var(--urgency-medium))' },
-  { name: 'Élevée', value: adminDashboardStats.ticketsByUrgency.high, color: 'hsl(var(--urgency-high))' },
-  { name: 'Critique', value: adminDashboardStats.ticketsByUrgency.critical, color: 'hsl(var(--urgency-critical))' },
-];
-
-const ticketsByStatus = [
-  { name: 'Nouveau', value: adminDashboardStats.ticketsByStatus.new },
-  { name: 'Besoin infos', value: adminDashboardStats.ticketsByStatus.info_needed },
-  { name: 'En traitement', value: adminDashboardStats.ticketsByStatus.processing },
-  { name: 'Escaladé RH', value: adminDashboardStats.ticketsByStatus.hr_escalated },
-  { name: 'Attente RH', value: adminDashboardStats.ticketsByStatus.hr_pending },
-  { name: 'Résolu', value: adminDashboardStats.ticketsByStatus.resolved },
-  { name: 'Clôturé', value: adminDashboardStats.ticketsByStatus.closed },
-];
-
-const ticketsByCompany = adminDashboardStats.ticketsByCompany.map((item, index) => ({
-  ...item,
-  color: ['hsl(220, 70%, 50%)', 'hsl(160, 60%, 45%)', 'hsl(30, 80%, 55%)', 'hsl(280, 60%, 50%)'][index],
-}));
+import { fetchTicketsList } from '@/lib/api/tickets';
+import { fetchCompanies } from '@/lib/api/companies';
+import { useTicketMeta } from '@/hooks/useTicketMeta';
+import { useQuery } from '@tanstack/react-query';
+import { Loader2 } from 'lucide-react';
 
 // Monthly trend data (mock)
 const monthlyTrend = [
@@ -97,8 +78,79 @@ export default function Reports() {
   const [period, setPeriod] = useState('month');
   const [selectedCompany, setSelectedCompany] = useState('all');
 
-  const totalTickets = ticketsByUrgency.reduce((sum, item) => sum + item.value, 0);
+  const { data: tickets = [], isLoading: ticketsLoading } = useQuery({
+    queryKey: ['tickets'],
+    queryFn: fetchTicketsList,
+  });
+  const { data: companiesList = [] } = useQuery({
+    queryKey: ['companies'],
+    queryFn: fetchCompanies,
+  });
+  const { statuses, statusCode } = useTicketMeta();
+
+  // Urgency distribution
+  const ticketsByUrgency = useMemo(() => {
+    const counts: Record<string, number> = { low: 0, medium: 0, high: 0, critical: 0 };
+    tickets.forEach(t => { if (counts[t.urgency] !== undefined) counts[t.urgency]++; });
+    return [
+      { name: 'Faible', value: counts.low, color: 'hsl(var(--urgency-low))' },
+      { name: 'Moyenne', value: counts.medium, color: 'hsl(var(--urgency-medium))' },
+      { name: 'Élevée', value: counts.high, color: 'hsl(var(--urgency-high))' },
+      { name: 'Critique', value: counts.critical, color: 'hsl(var(--urgency-critical))' },
+    ];
+  }, [tickets]);
+
+  // Status distribution
+  const ticketsByStatus = useMemo(() => {
+    const countMap: Record<string, number> = {};
+    tickets.forEach(t => {
+      const label = t.status_label || 'Inconnu';
+      countMap[label] = (countMap[label] || 0) + 1;
+    });
+    return Object.entries(countMap).map(([name, value]) => ({ name, value }));
+  }, [tickets]);
+
+  // By company
+  const ticketsByCompany = useMemo(() => {
+    const countMap: Record<string, number> = {};
+    tickets.forEach(t => {
+      const name = t.company_name || 'Inconnu';
+      countMap[name] = (countMap[name] || 0) + 1;
+    });
+    const colors = ['hsl(220, 70%, 50%)', 'hsl(160, 60%, 45%)', 'hsl(30, 80%, 55%)', 'hsl(280, 60%, 50%)'];
+    return Object.entries(countMap).map(([company, count], i) => ({ company, count, color: colors[i % colors.length] }));
+  }, [tickets]);
+
+  // By type (for "Top Issues")
+  const ticketsByType = useMemo(() => {
+    const countMap: Record<string, number> = {};
+    tickets.forEach(t => {
+      const label = t.ticket_type_label || 'Autre';
+      countMap[label] = (countMap[label] || 0) + 1;
+    });
+    return Object.entries(countMap)
+      .map(([type, count]) => ({ type, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [tickets]);
+
+  const totalTickets = tickets.length;
+  const ticketsInProgress = tickets.filter(t => {
+    const code = statusCode(t.status);
+    return code === 'processing' || code === 'hr_escalated' || code === 'info_needed';
+  }).length;
+  const ticketsClosed = tickets.filter(t => {
+    const code = statusCode(t.status);
+    return code === 'resolved' || code === 'closed';
+  }).length;
   const avgResolutionTime = (resolutionTime.reduce((sum, item) => sum + item.jours, 0) / resolutionTime.length).toFixed(1);
+
+  if (ticketsLoading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -133,8 +185,8 @@ export default function Reports() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Toutes compagnies</SelectItem>
-              {companies.map(company => (
-                <SelectItem key={company.id} value={company.id}>
+              {companiesList.map(company => (
+                <SelectItem key={company.id} value={String(company.id)}>
                   {company.name}
                 </SelectItem>
               ))}
@@ -168,9 +220,9 @@ export default function Reports() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">En cours</p>
-                <p className="text-3xl font-bold text-foreground">{adminDashboardStats.ticketsInProgress}</p>
+                <p className="text-3xl font-bold text-foreground">{ticketsInProgress}</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {Math.round((adminDashboardStats.ticketsInProgress / totalTickets) * 100)}% du total
+                  {totalTickets > 0 ? Math.round((ticketsInProgress / totalTickets) * 100) : 0}% du total
                 </p>
               </div>
               <div className="w-12 h-12 bg-amber-500/10 rounded-full flex items-center justify-center">
@@ -185,7 +237,7 @@ export default function Reports() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Résolus</p>
-                <p className="text-3xl font-bold text-foreground">{adminDashboardStats.ticketsClosed}</p>
+                <p className="text-3xl font-bold text-foreground">{ticketsClosed}</p>
                 <p className="text-xs text-green-600 flex items-center gap-1 mt-1">
                   <CheckCircle2 className="w-3 h-3" />
                   Taux: 74%
@@ -527,14 +579,7 @@ export default function Reports() {
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {[
-                    { type: 'Rémunération / Primes', count: 42, trend: '+15%', trendUp: true },
-                    { type: 'Sanctions', count: 28, trend: '+8%', trendUp: true },
-                    { type: 'Carrière / Formation', count: 24, trend: '-5%', trendUp: false },
-                    { type: 'Licenciement', count: 18, trend: '+22%', trendUp: true },
-                    { type: 'Recrutement', count: 15, trend: '0%', trendUp: null },
-                    { type: 'Autres', count: 12, trend: '-10%', trendUp: false },
-                  ].map((item, index) => (
+                  {ticketsByType.map((item) => (
                     <div 
                       key={item.type}
                       className="p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
@@ -544,15 +589,8 @@ export default function Reports() {
                           <p className="font-medium text-foreground">{item.type}</p>
                           <p className="text-2xl font-bold text-primary mt-1">{item.count}</p>
                         </div>
-                        <Badge 
-                          variant="outline" 
-                          className={
-                            item.trendUp === true ? 'text-red-600 border-red-200' :
-                            item.trendUp === false ? 'text-green-600 border-green-200' :
-                            'text-muted-foreground'
-                          }
-                        >
-                          {item.trend}
+                        <Badge variant="outline" className="text-muted-foreground">
+                          {totalTickets > 0 ? Math.round((item.count / totalTickets) * 100) : 0}%
                         </Badge>
                       </div>
                     </div>

@@ -13,8 +13,10 @@ import {
   FileText,
   CheckCircle2,
   Tag,
-  AlertTriangle
+  AlertTriangle,
+  Loader2
 } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ActivityTracker } from '@/components/tickets/ActivityTracker';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -25,10 +27,16 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { UrgencyBadge } from '@/components/ui/UrgencyBadge';
 import { StatusBadge } from '@/components/ui/StatusBadge';
-import { tickets, ticketTypeLabels, urgencyLabels, statusLabels, currentUser, poles, delegates } from '@/lib/mock-data';
+import { fetchTicket, updateTicket } from '@/lib/api/tickets';
+import { fetchConversations, createConversation } from '@/lib/api/conversations';
+import { fetchTicketHRInteractions } from '@/lib/api/hr';
+import { fetchPoles } from '@/lib/api/poles';
+import { fetchDelegates } from '@/lib/api/delegates';
+import { useTicketMeta } from '@/hooks/useTicketMeta';
+import { urgencyLabels } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
-import type { TicketStatus, TicketType, TicketUrgency } from '@/types';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth, useAcl } from '@/contexts/AuthContext';
 import {
   Select,
   SelectContent,
@@ -37,38 +45,80 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-const statusSteps: TicketStatus[] = [
-  'new',
-  'info_needed',
-  'processing',
-  'hr_escalated',
-  'resolved',
-  'closed',
-];
-
-// Seuls les membres et délégués peuvent classifier
-const canClassify = currentUser.role === 'member' || currentUser.role === 'delegate' || currentUser.role === 'pole_manager' || currentUser.role === 'admin';
-
-const ticketTypes = Object.entries(ticketTypeLabels) as [TicketType, string][];
-const urgencyLevels = Object.entries(urgencyLabels) as [TicketUrgency, string][];
+const urgencyLevels = Object.entries(urgencyLabels) as [string, string][];
 
 export default function TicketDetail() {
   const { id } = useParams();
   const { toast } = useToast();
-  const ticket = tickets.find((t) => t.id === id);
+  const { can } = useAcl();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const canClassify = can('ticket_classify');
+
+  const { types, statuses, statusCode, statusLabel } = useTicketMeta();
+
+  // Fetch ticket
+  const { data: ticket, isLoading: ticketLoading } = useQuery({
+    queryKey: ['ticket', id],
+    queryFn: () => fetchTicket(id!),
+    enabled: !!id,
+  });
+
+  // Fetch conversations
+  const { data: conversations = [] } = useQuery({
+    queryKey: ['conversations', id],
+    queryFn: () => fetchConversations(id!),
+    enabled: !!id,
+  });
+
+  // Fetch HR interactions
+  const { data: hrInteractions = [] } = useQuery({
+    queryKey: ['hr-interactions', id],
+    queryFn: () => fetchTicketHRInteractions(id!),
+    enabled: !!id,
+  });
+
+  // Fetch poles and delegates for classification
+  const { data: poles = [] } = useQuery({
+    queryKey: ['poles'],
+    queryFn: () => fetchPoles(),
+    enabled: canClassify,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: delegatesList = [] } = useQuery({
+    queryKey: ['delegates'],
+    queryFn: () => fetchDelegates(),
+    enabled: canClassify,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const [newMessage, setNewMessage] = useState('');
   
   // Classification state
   const [classification, setClassification] = useState({
-    type: ticket?.type || '',
-    urgency: ticket?.urgency || '',
-    poleId: ticket?.poleId || '',
-    delegateId: ticket?.delegateId || '',
+    type: '',
+    urgency: '',
+    poleId: '',
+    delegateId: '',
   });
   const [isClassifying, setIsClassifying] = useState(false);
 
-  // Check if ticket needs classification (no type or urgency)
-  const needsClassification = ticket && (!ticket.type || !ticket.urgency);
+  // Sort statuses by order for timeline
+  const sortedStatuses = [...statuses].sort((a, b) => a.order - b.order);
+
+  // Initialize classification when ticket loads
+  if (ticket && !classification.type && !classification.urgency) {
+    // This runs once when ticket data arrives
+  }
+
+  if (ticketLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   if (!ticket) {
     return (
@@ -81,26 +131,55 @@ export default function TicketDetail() {
     );
   }
 
-  const currentStatusIndex = statusSteps.indexOf(ticket.status);
+  const needsClassification = !ticket.ticket_type || !ticket.urgency;
+  const currentStatusIndex = sortedStatuses.findIndex(s => s.id === ticket.status);
 
-  const handleSendMessage = () => {
-    if (newMessage.trim()) {
-      // Handle message sending
-      setNewMessage('');
+  const handleSendMessage = async () => {
+    if (newMessage.trim() && ticket) {
+      try {
+        await createConversation({
+          ticket: ticket.id,
+          message: newMessage.trim(),
+        });
+        setNewMessage('');
+        queryClient.invalidateQueries({ queryKey: ['conversations', id] });
+      } catch (error: any) {
+        toast({
+          title: 'Erreur',
+          description: error.message || 'Impossible d\'envoyer le message.',
+          variant: 'destructive',
+        });
+      }
     }
   };
 
   const handleSaveClassification = async () => {
+    if (!ticket) return;
     setIsClassifying(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    
-    toast({
-      title: 'Classification enregistrée',
-      description: 'Le type et l\'urgence ont été mis à jour avec succès.',
-    });
-    
-    setIsClassifying(false);
+    try {
+      const payload: Record<string, unknown> = {};
+      if (classification.type) payload.ticket_type = classification.type;
+      if (classification.urgency) payload.urgency = classification.urgency;
+      if (classification.poleId) payload.pole = classification.poleId;
+      if (classification.delegateId) payload.delegate = classification.delegateId;
+
+      await updateTicket(ticket.id, payload as any);
+
+      toast({
+        title: 'Classification enregistrée',
+        description: 'Le type et l\'urgence ont été mis à jour avec succès.',
+      });
+
+      queryClient.invalidateQueries({ queryKey: ['ticket', id] });
+    } catch (error: any) {
+      toast({
+        title: 'Erreur',
+        description: error.message || 'Impossible de sauvegarder la classification.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsClassifying(false);
+    }
   };
 
   return (
@@ -124,13 +203,13 @@ export default function TicketDetail() {
                   <span className="text-sm font-mono text-muted-foreground">
                     {ticket.reference}
                   </span>
-                  <Badge variant="outline">{ticketTypeLabels[ticket.type]}</Badge>
+                  <Badge variant="outline">{ticket.ticket_type_label}</Badge>
                 </div>
                 <h1 className="text-xl font-bold">{ticket.subject}</h1>
               </div>
               <div className="flex items-center gap-3">
                 <UrgencyBadge urgency={ticket.urgency} />
-                <StatusBadge status={ticket.status} />
+                <StatusBadge status={statusCode(ticket.status)} />
               </div>
             </div>
 
@@ -141,11 +220,11 @@ export default function TicketDetail() {
               <h3 className="text-sm font-semibold mb-4">Progression du dossier</h3>
               <div className="relative">
                 <div className="flex justify-between">
-                  {statusSteps.map((status, index) => {
+                  {sortedStatuses.map((statusObj, index) => {
                     const isCompleted = index <= currentStatusIndex;
                     const isCurrent = index === currentStatusIndex;
                     return (
-                      <div key={status} className="flex flex-col items-center flex-1">
+                      <div key={statusObj.id} className="flex flex-col items-center flex-1">
                         <div
                           className={cn(
                             'w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium z-10',
@@ -167,7 +246,7 @@ export default function TicketDetail() {
                             isCompleted ? 'text-foreground font-medium' : 'text-muted-foreground'
                           )}
                         >
-                          {statusLabels[status]}
+                          {statusObj.label}
                         </span>
                       </div>
                     );
@@ -178,7 +257,7 @@ export default function TicketDetail() {
                   <div
                     className="h-full bg-status-resolved transition-all duration-500"
                     style={{
-                      width: `${(currentStatusIndex / (statusSteps.length - 1)) * 100}%`,
+                      width: `${sortedStatuses.length > 1 ? (currentStatusIndex / (sortedStatuses.length - 1)) * 100 : 0}%`,
                     }}
                   />
                 </div>
@@ -195,25 +274,7 @@ export default function TicketDetail() {
               </p>
             </div>
 
-            {/* Attachments */}
-            {ticket.attachments.length > 0 && (
-              <div className="mt-6">
-                <h3 className="text-sm font-semibold mb-3">Pièces jointes</h3>
-                <div className="flex flex-wrap gap-2">
-                  {ticket.attachments.map((file) => (
-                    <Button
-                      key={file.id}
-                      variant="outline"
-                      size="sm"
-                      className="h-auto py-2"
-                    >
-                      <Paperclip className="w-4 h-4 mr-2" />
-                      {file.name}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* Attachments - placeholder for file API */}
           </div>
 
           {/* Activity Tracker - Only for delegates and pole managers */}
@@ -222,8 +283,8 @@ export default function TicketDetail() {
               ticketId={ticket.id} 
               ticketReference={ticket.reference}
               ticketSubject={ticket.subject}
-              recipientEmail={ticket.user.email}
-              recipientName={`${ticket.user.firstName} ${ticket.user.lastName}`}
+              recipientEmail=""
+              recipientName={ticket.worker_name || ''}
               canManage={canClassify} 
             />
           )}
@@ -234,23 +295,23 @@ export default function TicketDetail() {
               <MessageSquare className="w-5 h-5 text-muted-foreground" />
               <h3 className="font-semibold">Échanges</h3>
               <Badge variant="secondary" className="ml-auto">
-                {ticket.messages.length}
+                {conversations.length}
               </Badge>
             </div>
 
             <ScrollArea className="h-80">
               <div className="p-4 space-y-4">
-                {ticket.messages.length === 0 ? (
+                {conversations.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">
                     Aucun message pour le moment
                   </p>
                 ) : (
-                  ticket.messages.map((message) => (
+                  conversations.map((msg) => (
                     <div
-                      key={message.id}
+                      key={msg.id}
                       className={cn(
                         'flex gap-3',
-                        message.userId === currentUser.id && 'flex-row-reverse'
+                        msg.author === user?.id && 'flex-row-reverse'
                       )}
                     >
                       <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
@@ -259,17 +320,17 @@ export default function TicketDetail() {
                       <div
                         className={cn(
                           'flex-1 max-w-[80%]',
-                          message.userId === currentUser.id && 'text-right'
+                          msg.author === user?.id && 'text-right'
                         )}
                       >
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-sm font-medium">
-                            {message.user.firstName} {message.user.lastName}
+                            {msg.author_name}
                           </span>
                           <span className="text-xs text-muted-foreground">
-                            {new Date(message.createdAt).toLocaleDateString('fr-FR')}
+                            {new Date(msg.created_at).toLocaleDateString('fr-FR')}
                           </span>
-                          {message.isInternal && (
+                          {msg.internal_only && (
                             <Badge variant="outline" className="text-xs">
                               Interne
                             </Badge>
@@ -278,12 +339,12 @@ export default function TicketDetail() {
                         <div
                           className={cn(
                             'p-3 rounded-lg',
-                            message.userId === currentUser.id
+                            msg.author === user?.id
                               ? 'bg-primary text-primary-foreground'
                               : 'bg-muted'
                           )}
                         >
-                          <p className="text-sm">{message.content}</p>
+                          <p className="text-sm">{msg.message}</p>
                         </div>
                       </div>
                     </div>
@@ -347,9 +408,9 @@ export default function TicketDetail() {
                       <SelectValue placeholder="Sélectionner un type" />
                     </SelectTrigger>
                     <SelectContent>
-                      {ticketTypes.map(([value, label]) => (
-                        <SelectItem key={value} value={value}>
-                          {label}
+                      {types.map((tt) => (
+                        <SelectItem key={tt.id} value={tt.id}>
+                          {tt.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -424,9 +485,9 @@ export default function TicketDetail() {
                       <SelectValue placeholder="Assigner à un délégué" />
                     </SelectTrigger>
                     <SelectContent>
-                      {delegates.map((delegate) => (
-                        <SelectItem key={delegate.id} value={delegate.id}>
-                          {delegate.user.firstName} {delegate.user.lastName}
+                      {delegatesList.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          {d.username}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -453,27 +514,27 @@ export default function TicketDetail() {
                 <Building2 className="w-4 h-4 text-muted-foreground" />
                 <div>
                   <p className="text-xs text-muted-foreground">Compagnie</p>
-                  <p className="font-medium">{ticket.company.name}</p>
+                  <p className="font-medium">{ticket.company_name}</p>
                 </div>
               </div>
 
-              {ticket.pole && (
+              {ticket.pole_name && (
                 <div className="flex items-center gap-3">
                   <FileText className="w-4 h-4 text-muted-foreground" />
                   <div>
                     <p className="text-xs text-muted-foreground">Pôle assigné</p>
-                    <p className="font-medium">{ticket.pole.name}</p>
+                    <p className="font-medium">{ticket.pole_name}</p>
                   </div>
                 </div>
               )}
 
-              {ticket.delegate && (
+              {ticket.delegate_name && (
                 <div className="flex items-center gap-3">
                   <Users className="w-4 h-4 text-muted-foreground" />
                   <div>
                     <p className="text-xs text-muted-foreground">Délégué</p>
                     <p className="font-medium">
-                      {ticket.delegate.user.firstName} {ticket.delegate.user.lastName}
+                      {ticket.delegate_name}
                     </p>
                   </div>
                 </div>
@@ -486,7 +547,7 @@ export default function TicketDetail() {
                 <div>
                   <p className="text-xs text-muted-foreground">Créée le</p>
                   <p className="font-medium">
-                    {new Date(ticket.createdAt).toLocaleDateString('fr-FR', {
+                    {new Date(ticket.created_at).toLocaleDateString('fr-FR', {
                       day: 'numeric',
                       month: 'long',
                       year: 'numeric',
@@ -500,7 +561,7 @@ export default function TicketDetail() {
                 <div>
                   <p className="text-xs text-muted-foreground">Dernière mise à jour</p>
                   <p className="font-medium">
-                    {new Date(ticket.updatedAt).toLocaleDateString('fr-FR', {
+                    {new Date(ticket.updated_at).toLocaleDateString('fr-FR', {
                       day: 'numeric',
                       month: 'long',
                       year: 'numeric',
@@ -512,27 +573,30 @@ export default function TicketDetail() {
           </div>
 
           {/* HR Interactions */}
-          {ticket.hrInteractions.length > 0 && (
+          {hrInteractions.length > 0 && (
             <div className="bg-card rounded-xl border shadow-card p-6">
               <h3 className="font-semibold mb-4">Interactions RH</h3>
               <div className="space-y-4">
-                {ticket.hrInteractions.map((interaction) => (
+                {hrInteractions.map((interaction) => (
                   <div
                     key={interaction.id}
                     className="p-3 bg-muted rounded-lg"
                   >
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-medium text-sm">
-                        {interaction.contactName}
+                        {interaction.hr_name}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {new Date(interaction.createdAt).toLocaleDateString('fr-FR')}
+                        {new Date(interaction.interaction_date).toLocaleDateString('fr-FR')}
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground mb-1">
-                      {interaction.contactRole}
+                      {interaction.channel}
                     </p>
-                    <p className="text-sm">{interaction.notes}</p>
+                    <p className="text-sm">{interaction.summary}</p>
+                    {interaction.outcome && (
+                      <p className="text-sm text-muted-foreground mt-1">Résultat: {interaction.outcome}</p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -540,7 +604,7 @@ export default function TicketDetail() {
           )}
 
           {/* Need more info alert */}
-          {ticket.status === 'info_needed' && (
+          {statusCode(ticket.status) === 'info_needed' && (
             <div className="bg-urgency-medium/10 border border-urgency-medium/30 rounded-xl p-4">
               <h4 className="font-semibold text-urgency-medium mb-2">
                 Action requise

@@ -17,12 +17,27 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { currentUser, notifications } from '@/lib/mock-data';
+import { fetchNotifications } from '@/lib/api/notifications';
+import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
+import { ROLE_LABELS } from '@/lib/acl';
 
 export function TopBar() {
   const [searchQuery, setSearchQuery] = useState('');
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  const { user, logout } = useAuth();
+  const { data: notifications = [] } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: fetchNotifications,
+    refetchInterval: 30000, // Poll every 30s
+  });
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  const displayName = user?.name || user?.username || 'Utilisateur';
+  const displayEmail = user?.email || '';
+  const roleLabel = user?.is_superuser
+    ? 'Super Administrateur'
+    : ROLE_LABELS[user?.roles?.[0]?.role_code ?? ''] ?? '';
 
   return (
     <header className="h-16 bg-card border-b border-border flex items-center justify-between px-6 sticky top-0 z-30">
@@ -69,13 +84,13 @@ export function TopBar() {
                     className={cn(
                       'w-full text-left p-3 rounded-lg transition-colors',
                       'hover:bg-accent',
-                      !notification.isRead && 'bg-accent/50'
+                      !notification.read && 'bg-accent/50'
                     )}
                   >
                     <div className="flex items-start gap-3">
                       <div className={cn(
                         'w-2 h-2 mt-2 rounded-full shrink-0',
-                        notification.isRead ? 'bg-muted-foreground/30' : 'bg-primary'
+                        notification.read ? 'bg-muted-foreground/30' : 'bg-primary'
                       )} />
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-sm truncate">
@@ -85,7 +100,7 @@ export function TopBar() {
                           {notification.message}
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {new Date(notification.createdAt).toLocaleDateString('fr-FR')}
+                          {new Date(notification.created_at).toLocaleDateString('fr-FR')}
                         </p>
                       </div>
                     </div>
@@ -105,10 +120,10 @@ export function TopBar() {
               </div>
               <div className="hidden md:block text-left">
                 <p className="text-sm font-medium leading-none">
-                  {currentUser.firstName} {currentUser.lastName}
+                  {displayName}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {currentUser.email}
+                  {roleLabel || displayEmail}
                 </p>
               </div>
               <ChevronDown className="w-4 h-4 text-muted-foreground hidden md:block" />
@@ -120,7 +135,7 @@ export function TopBar() {
             <DropdownMenuItem>Profil</DropdownMenuItem>
             <DropdownMenuItem>Paramètres</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive">
+            <DropdownMenuItem className="text-destructive" onClick={logout}>
               Déconnexion
             </DropdownMenuItem>
           </DropdownMenuContent>

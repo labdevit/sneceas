@@ -33,14 +33,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { StatsCard } from '@/components/dashboard/StatsCard';
-import {
-  companies,
-  statusLabels,
-  ticketTypeLabels,
-  tickets,
-  urgencyLabels,
-} from '@/lib/mock-data';
-import type { TicketType } from '@/types';
+import { useQuery } from '@tanstack/react-query';
+import { fetchTicketsList, type ApiTicket } from '@/lib/api/tickets';
+import { fetchCompanies, type ApiCompany } from '@/lib/api/companies';
+import { useTicketMeta } from '@/hooks/useTicketMeta';
+import { urgencyLabels } from '@/lib/mock-data';
 
 type PeriodFilter = 'all' | 'month' | 'quarter';
 
@@ -57,11 +54,26 @@ const isDismissalSignal = (subject: string, description: string) => {
 
 export function CompanyInsights() {
   const [period, setPeriod] = useState<PeriodFilter>('all');
-  const [typeFilter, setTypeFilter] = useState<TicketType | 'all'>('all');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
   const [heatmapDetail, setHeatmapDetail] = useState<{
     companyId: string;
-    type: TicketType;
+    typeId: string;
   } | null>(null);
+
+  // Fetch data from API
+  const { data: companies = [] } = useQuery({
+    queryKey: ['companies'],
+    queryFn: () => fetchCompanies(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: tickets = [] } = useQuery({
+    queryKey: ['tickets-all'],
+    queryFn: () => fetchTicketsList(),
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const { types, statusCode } = useTicketMeta();
 
   const filteredTickets = useMemo(() => {
     if (period === 'all') {
@@ -80,20 +92,20 @@ export function CompanyInsights() {
       start.setHours(0, 0, 0, 0);
     }
 
-    return tickets.filter((ticket) => ticket.createdAt >= start);
-  }, [period]);
+    return tickets.filter((ticket) => new Date(ticket.created_at) >= start);
+  }, [period, tickets]);
 
   const scopedTickets = useMemo(() => {
     if (typeFilter === 'all') {
       return filteredTickets;
     }
-    return filteredTickets.filter((ticket) => ticket.type === typeFilter);
+    return filteredTickets.filter((ticket) => ticket.ticket_type === typeFilter);
   }, [filteredTickets, typeFilter]);
 
   const companyStats = useMemo(() => {
     return companies.map((company) => {
       const companyTickets = scopedTickets.filter(
-        (ticket) => ticket.companyId === company.id
+        (ticket) => ticket.company === company.id
       );
       const dismissalCount = companyTickets.filter((ticket) =>
         isDismissalSignal(ticket.subject, ticket.description)
@@ -107,17 +119,17 @@ export function CompanyInsights() {
         dismissal: dismissalCount,
       };
     });
-  }, [scopedTickets]);
+  }, [scopedTickets, companies]);
 
   const top5Companies = [...companyStats]
     .sort((a, b) => b.total - a.total)
     .slice(0, 5);
 
-  const ticketTypes = Object.entries(ticketTypeLabels);
+  const ticketTypeEntries = types.map((t) => [t.id, t.label] as const);
   const heatmapData = companies.map((company) => {
-    const companyTickets = scopedTickets.filter((ticket) => ticket.companyId === company.id);
-    const counts = ticketTypes.reduce<Record<string, number>>((acc, [typeKey]) => {
-      acc[typeKey] = companyTickets.filter((ticket) => ticket.type === typeKey).length;
+    const companyTickets = scopedTickets.filter((ticket) => ticket.company === company.id);
+    const counts = ticketTypeEntries.reduce<Record<string, number>>((acc, [typeId]) => {
+      acc[typeId] = companyTickets.filter((ticket) => ticket.ticket_type === typeId).length;
       return acc;
     }, {});
 
@@ -140,8 +152,8 @@ export function CompanyInsights() {
     }
     return scopedTickets.filter(
       (ticket) =>
-        ticket.companyId === heatmapDetail.companyId &&
-        ticket.type === heatmapDetail.type
+        ticket.company === heatmapDetail.companyId &&
+        ticket.ticket_type === heatmapDetail.typeId
     );
   }, [heatmapDetail, scopedTickets]);
 
@@ -161,12 +173,12 @@ export function CompanyInsights() {
     ];
     const rows = scopedTickets.map((ticket) => [
       ticket.reference,
-      ticket.company?.name ?? '',
-      ticketTypeLabels[ticket.type] ?? ticket.type,
+      ticket.company_name ?? '',
+      ticket.ticket_type_label ?? '',
       urgencyLabels[ticket.urgency] ?? ticket.urgency,
-      statusLabels[ticket.status] ?? ticket.status,
+      ticket.status_label ?? '',
       ticket.subject.replace(/"/g, '""'),
-      ticket.createdAt.toISOString().split('T')[0],
+      ticket.created_at.split('T')[0],
     ]);
     const csv = [header, ...rows]
       .map((row) => row.map((cell) => `"${cell}"`).join(','))
@@ -192,12 +204,12 @@ export function CompanyInsights() {
         (ticket) => `
           <tr>
             <td>${ticket.reference}</td>
-            <td>${ticket.company?.name ?? ''}</td>
-            <td>${ticketTypeLabels[ticket.type] ?? ticket.type}</td>
+            <td>${ticket.company_name ?? ''}</td>
+            <td>${ticket.ticket_type_label ?? ''}</td>
             <td>${urgencyLabels[ticket.urgency] ?? ticket.urgency}</td>
-            <td>${statusLabels[ticket.status] ?? ticket.status}</td>
+            <td>${ticket.status_label ?? ''}</td>
             <td>${ticket.subject}</td>
-            <td>${ticket.createdAt.toISOString().split('T')[0]}</td>
+            <td>${ticket.created_at.split('T')[0]}</td>
           </tr>`
       )
       .join('');
@@ -217,7 +229,7 @@ export function CompanyInsights() {
         </head>
         <body>
           <h1>Requêtes — ${periodLabels[period]}</h1>
-          <p>Filtre type : ${typeFilter === 'all' ? 'Tous' : ticketTypeLabels[typeFilter]}</p>
+          <p>Filtre type : ${typeFilter === 'all' ? 'Tous' : types.find(t => t.id === typeFilter)?.label ?? typeFilter}</p>
           <table>
             <thead>
               <tr>
@@ -285,16 +297,16 @@ export function CompanyInsights() {
           <div className="w-full sm:w-64">
             <Select
               value={typeFilter}
-              onValueChange={(value) => setTypeFilter(value as TicketType | 'all')}
+              onValueChange={(value) => setTypeFilter(value)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Type de requête" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tous les types</SelectItem>
-                {ticketTypes.map(([typeKey, label]) => (
-                  <SelectItem key={typeKey} value={typeKey}>
-                    {label}
+                {types.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.label}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -460,8 +472,8 @@ export function CompanyInsights() {
                   <thead>
                     <tr>
                       <th className="text-left py-2 pr-2">Entreprise</th>
-                      {ticketTypes.map(([typeKey, label]) => (
-                        <th key={typeKey} className="text-left py-2 px-2 min-w-[120px]">
+                      {ticketTypeEntries.map(([typeId, label]) => (
+                        <th key={typeId} className="text-left py-2 px-2 min-w-[120px]">
                           {label}
                         </th>
                       ))}
@@ -471,19 +483,19 @@ export function CompanyInsights() {
                     {heatmapData.map((row) => (
                       <tr key={row.company} className="border-t">
                         <td className="py-2 pr-2 font-medium">{row.company}</td>
-                        {ticketTypes.map(([typeKey]) => {
-                          const value = row.counts[typeKey] ?? 0;
+                        {ticketTypeEntries.map(([typeId]) => {
+                          const value = row.counts[typeId] ?? 0;
                           const intensity = maxHeatmapValue
                             ? Math.min(0.85, value / maxHeatmapValue + 0.15)
                             : 0;
                           return (
-                            <td key={`${row.company}-${typeKey}`} className="py-2 px-2">
+                            <td key={`${row.company}-${typeId}`} className="py-2 px-2">
                               <button
                                 type="button"
                                 onClick={() =>
                                   setHeatmapDetail({
                                     companyId: companies.find((c) => c.name === row.company)?.id ?? '',
-                                    type: typeKey as TicketType,
+                                    typeId: typeId,
                                   })
                                 }
                                 className="w-full"
@@ -518,7 +530,7 @@ export function CompanyInsights() {
             <DialogTitle>Détails des requêtes</DialogTitle>
             <DialogDescription>
               {selectedCompany?.name ?? 'Entreprise'} —{' '}
-              {heatmapDetail ? ticketTypeLabels[heatmapDetail.type] : ''}
+              {heatmapDetail ? types.find(t => t.id === heatmapDetail.typeId)?.label ?? '' : ''}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 max-h-[320px] overflow-auto">
@@ -529,8 +541,8 @@ export function CompanyInsights() {
                 <div key={ticket.id} className="rounded-lg border p-3 text-sm">
                   <div className="font-medium">{ticket.subject}</div>
                   <div className="text-xs text-muted-foreground mt-1">
-                    {ticket.reference} · {statusLabels[ticket.status]} ·{' '}
-                    {urgencyLabels[ticket.urgency]}
+                    {ticket.reference} · {ticket.status_label} ·{' '}
+                    {urgencyLabels[ticket.urgency] ?? ticket.urgency}
                   </div>
                 </div>
               ))

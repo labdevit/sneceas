@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Filter, Plus, Clock, ArrowUpDown } from 'lucide-react';
+import { Search, Filter, Plus, Clock, ArrowUpDown, Loader2 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -20,13 +21,23 @@ import {
 } from '@/components/ui/table';
 import { UrgencyBadge } from '@/components/ui/UrgencyBadge';
 import { StatusBadge } from '@/components/ui/StatusBadge';
-import { tickets, ticketTypeLabels, statusLabels, urgencyLabels } from '@/lib/mock-data';
+import { fetchTicketsList } from '@/lib/api/tickets';
+import { useTicketMeta } from '@/hooks/useTicketMeta';
+import { urgencyLabels } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
 
 export default function TicketsList() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [urgencyFilter, setUrgencyFilter] = useState('all');
+
+  const { statuses, statusCode } = useTicketMeta();
+
+  const { data: tickets = [], isLoading } = useQuery({
+    queryKey: ['tickets'],
+    queryFn: () => fetchTicketsList(),
+    staleTime: 60 * 1000,
+  });
 
   const filteredTickets = tickets.filter((ticket) => {
     const matchesSearch =
@@ -72,9 +83,9 @@ export default function TicketsList() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Tous les statuts</SelectItem>
-            {Object.entries(statusLabels).map(([value, label]) => (
-              <SelectItem key={value} value={value}>
-                {label}
+            {statuses.map((s) => (
+              <SelectItem key={s.id} value={s.id}>
+                {s.label}
               </SelectItem>
             ))}
           </SelectContent>
@@ -134,18 +145,18 @@ export default function TicketsList() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <span className="text-sm">{ticketTypeLabels[ticket.type]}</span>
+                    <span className="text-sm">{ticket.ticket_type_label}</span>
                   </TableCell>
                   <TableCell>
                     <UrgencyBadge urgency={ticket.urgency} size="sm" />
                   </TableCell>
                   <TableCell>
-                    <StatusBadge status={ticket.status} size="sm" />
+                    <StatusBadge status={statusCode(ticket.status)} size="sm" />
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                       <Clock className="w-3.5 h-3.5" />
-                      {new Date(ticket.updatedAt).toLocaleDateString('fr-FR')}
+                      {new Date(ticket.updated_at).toLocaleDateString('fr-FR')}
                     </div>
                   </TableCell>
                   <TableCell className="text-right">
