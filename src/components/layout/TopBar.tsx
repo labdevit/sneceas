@@ -1,7 +1,6 @@
-import { useState } from 'react';
-import { Bell, Search, User, ChevronDown } from 'lucide-react';
-import { Input } from '@/components/ui/input';
+import { Bell, User, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { GlobalSearch } from '@/components/layout/GlobalSearch';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
@@ -24,7 +23,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ROLE_LABELS } from '@/lib/acl';
 
 export function TopBar() {
-  const [searchQuery, setSearchQuery] = useState('');
   const { user, logout } = useAuth();
   const { data: notifications = [] } = useQuery({
     queryKey: ['notifications'],
@@ -42,18 +40,7 @@ export function TopBar() {
   return (
     <header className="h-16 bg-card border-b border-border flex items-center justify-between px-6 sticky top-0 z-30">
       {/* Search */}
-      <div className="flex-1 max-w-md">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Rechercher requêtes, documents..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 bg-background border-input input-focus"
-          />
-        </div>
-      </div>
+      <GlobalSearch />
 
       {/* Right side */}
       <div className="flex items-center gap-3">

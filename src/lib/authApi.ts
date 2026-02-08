@@ -1,5 +1,5 @@
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? "http://158.220.118.172:8800/api";
+  import.meta.env.VITE_API_BASE_URL ?? "https://backendsnecea.labdev-it.com/api";
 
 // ── Types correspondant au vrai retour de l'API ──────────────────────
 export interface ApiRole {
