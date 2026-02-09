@@ -16,6 +16,7 @@ import Poles from "@/pages/Poles";
 import Delegates from "@/pages/Delegates";
 import Documents from "@/pages/Documents";
 import Communication from "@/pages/Communication";
+import Settings from "@/pages/Settings";
 import Admin from "@/pages/Admin";
 import Reports from "@/pages/Reports";
 import Login from "@/pages/Login";
@@ -46,6 +47,7 @@ const App = () => (
                 <Route path="/delegates" element={<Delegates />} />
                 <Route path="/documents" element={<Documents />} />
                 <Route path="/communication" element={<Communication />} />
+                <Route path="/settings" element={<Settings />} />
 
                 {/* Soumission de requête — pas hr_liaison ni auditor */}
                 <Route element={<ProtectedRoute allowedRoles={PERMISSIONS.submit_request} />}>

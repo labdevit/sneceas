@@ -3,8 +3,10 @@ import { apiGet, apiPost, apiPatch, type Paginated, unwrap } from '../api';
 // ── Types ────────────────────────────────────────────────────────────
 
 export interface ApiUser {
+  id: number;
   username: string;
   name: string;
+  email?: string;
   url: string;
 }
 

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Layers, Loader2, Mail, Plus, Trash2, Users } from 'lucide-react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, type QueryFunction } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,20 +21,23 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
-import { addPoleMember, fetchPoles, removePoleMember } from '@/lib/api/poles';
-import { fetchUsers } from '@/lib/api/users';
+import { addPoleMember, fetchPoles, removePoleMember, type ApiPole } from '@/lib/api/poles';
+import { fetchUsers, type ApiUser } from '@/lib/api/users';
 
 export default function Poles() {
   const queryClient = useQueryClient();
 
-  const { data: polesList = [], isLoading: isLoadingPoles } = useQuery({
+  const fetchPolesQuery: QueryFunction<ApiPole[]> = () => fetchPoles();
+  const fetchUsersQuery: QueryFunction<ApiUser[]> = () => fetchUsers();
+
+  const { data: polesList = [], isLoading: isLoadingPoles } = useQuery<ApiPole[]>({
     queryKey: ['poles'],
-    queryFn: fetchPoles,
+    queryFn: fetchPolesQuery,
   });
 
-  const { data: allUsers = [], isLoading: isLoadingUsers } = useQuery({
+  const { data: allUsers = [], isLoading: isLoadingUsers } = useQuery<ApiUser[]>({
     queryKey: ['users'],
-    queryFn: fetchUsers,
+    queryFn: fetchUsersQuery,
   });
 
   const [selectedPoleId, setSelectedPoleId] = useState('');
@@ -74,7 +77,7 @@ export default function Poles() {
     addMemberMutation.mutate({
       pole: selectedPole.id,
       user: parseInt(selectedUserId),
-      role: 'assistant',
+      function: 'assistant',
     });
 
     setSelectedUserId('');
@@ -187,8 +190,8 @@ export default function Poles() {
                             {member.username}
                           </div>
                           <div className="mt-2">
-                            <Badge variant={member.role === 'head' ? 'default' : 'secondary'}>
-                              {member.role === 'head' ? 'Chef de pôle' : 'Assistant'}
+                            <Badge variant={member.function === 'head' ? 'default' : 'secondary'}>
+                              {member.function === 'head' ? 'Chef de pôle' : 'Assistant'}
                             </Badge>
                           </div>
                         </div>
