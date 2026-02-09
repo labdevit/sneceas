@@ -6,6 +6,7 @@ import {
   useEffect,
   type ReactNode,
 } from "react";
+import { useNavigate } from "react-router-dom";
 import { loginApi, type AuthResponse, type AuthUser } from "@/lib/authApi";
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -79,11 +80,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const navigate = useNavigate();
   const logout = useCallback(() => {
     setAuth({ token: null, user: null });
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
-  }, []);
+    navigate('/login');
+  }, [navigate]);
 
   const hasRole = useCallback(
     (...roleCodes: RoleCode[]) => {
