@@ -22,20 +22,20 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { addPoleMember, fetchPoles, removePoleMember, type ApiPole } from '@/lib/api/poles';
-import { fetchUsers, type ApiUser } from '@/lib/api/users';
+import { fetchUsers, type ApiUserListItem } from '@/lib/api/users';
 
 export default function Poles() {
   const queryClient = useQueryClient();
 
   const fetchPolesQuery: QueryFunction<ApiPole[]> = () => fetchPoles();
-  const fetchUsersQuery: QueryFunction<ApiUser[]> = () => fetchUsers();
+  const fetchUsersQuery: QueryFunction<ApiUserListItem[]> = () => fetchUsers();
 
   const { data: polesList = [], isLoading: isLoadingPoles } = useQuery<ApiPole[]>({
     queryKey: ['poles'],
     queryFn: fetchPolesQuery,
   });
 
-  const { data: allUsers = [], isLoading: isLoadingUsers } = useQuery<ApiUser[]>({
+  const { data: allUsers = [], isLoading: isLoadingUsers } = useQuery<ApiUserListItem[]>({
     queryKey: ['users'],
     queryFn: fetchUsersQuery,
   });

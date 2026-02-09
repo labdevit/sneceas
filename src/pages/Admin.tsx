@@ -56,10 +56,10 @@ import {
   Phone,
   Loader2
 } from 'lucide-react';
-import { fetchUsers } from '@/lib/api/users';
-import { fetchCompanies, createCompany, deleteCompany } from '@/lib/api/companies';
-import { fetchPoles, createPole, deletePole } from '@/lib/api/poles';
-import { fetchDelegates, createDelegate } from '@/lib/api/delegates';
+import { fetchUsers, type ApiUserListItem } from '@/lib/api/users';
+import { fetchCompanies, createCompany, deleteCompany, type ApiCompany } from '@/lib/api/companies';
+import { fetchPoles, createPole, deletePole, type ApiPole } from '@/lib/api/poles';
+import { fetchDelegates, createDelegate, type ApiDelegate } from '@/lib/api/delegates';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 
@@ -71,27 +71,39 @@ export default function Admin() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Data fetching
-  const { data: usersList = [], isLoading: usersLoading } = useQuery({ queryKey: ['users'], queryFn: fetchUsers });
-  const { data: companiesList = [], isLoading: companiesLoading } = useQuery({ queryKey: ['companies'], queryFn: fetchCompanies });
-  const { data: polesList = [], isLoading: polesLoading } = useQuery({ queryKey: ['poles'], queryFn: fetchPoles });
-  const { data: delegatesList = [], isLoading: delegatesLoading } = useQuery({ queryKey: ['delegates'], queryFn: fetchDelegates });
+  const { data: usersList = [], isLoading: usersLoading } = useQuery<ApiUserListItem[]>({
+    queryKey: ['users'],
+    queryFn: () => fetchUsers(),
+  });
+  const { data: companiesList = [], isLoading: companiesLoading } = useQuery<ApiCompany[]>({
+    queryKey: ['companies'],
+    queryFn: () => fetchCompanies(),
+  });
+  const { data: polesList = [], isLoading: polesLoading } = useQuery<ApiPole[]>({
+    queryKey: ['poles'],
+    queryFn: () => fetchPoles(),
+  });
+  const { data: delegatesList = [], isLoading: delegatesLoading } = useQuery<ApiDelegate[]>({
+    queryKey: ['delegates'],
+    queryFn: () => fetchDelegates(),
+  });
 
   const isLoading = usersLoading || companiesLoading || polesLoading || delegatesLoading;
 
   // Users state
-  const [editingUser, setEditingUser] = useState<any | null>(null);
+  const [editingUser, setEditingUser] = useState<ApiUserListItem | null>(null);
   const [isUserDialogOpen, setIsUserDialogOpen] = useState(false);
 
   // Companies state
-  const [editingCompany, setEditingCompany] = useState<any | null>(null);
+  const [editingCompany, setEditingCompany] = useState<ApiCompany | null>(null);
   const [isCompanyDialogOpen, setIsCompanyDialogOpen] = useState(false);
 
   // Poles state
-  const [editingPole, setEditingPole] = useState<any | null>(null);
+  const [editingPole, setEditingPole] = useState<ApiPole | null>(null);
   const [isPoleDialogOpen, setIsPoleDialogOpen] = useState(false);
 
   // Delegates state
-  const [editingDelegate, setEditingDelegate] = useState<any | null>(null);
+  const [editingDelegate, setEditingDelegate] = useState<ApiDelegate | null>(null);
   const [isDelegateDialogOpen, setIsDelegateDialogOpen] = useState(false);
 
   const filteredUsers = usersList.filter(user => 

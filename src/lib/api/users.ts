@@ -3,11 +3,20 @@ import { apiGet, apiPost, apiPatch, type Paginated, unwrap } from '../api';
 // ── Types ────────────────────────────────────────────────────────────
 
 export interface ApiUser {
-  id: number;
+  id?: number;
   username: string;
   name: string;
   email?: string;
   url: string;
+}
+
+export type ApiUserListItem = Omit<ApiUser, 'id'> & { id: number };
+
+function extractUserId(url: string): number | null {
+  const match = url.match(/\/users\/(\d+)\/?$/);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export interface ApiUserDetail {
@@ -57,8 +66,18 @@ export interface CreateUserRolePayload {
 
 // ── Appels API ───────────────────────────────────────────────────────
 
-export const fetchUsers = async (params?: Record<string, string | undefined>) =>
-  unwrap(await apiGet<Paginated<ApiUser> | ApiUser[]>('/users/', params));
+export const fetchUsers = async (
+  params?: Record<string, string | undefined>
+): Promise<ApiUserListItem[]> => {
+  const users = unwrap(await apiGet<Paginated<ApiUser> | ApiUser[]>('/users/', params));
+  return users
+    .map((user) => {
+      const id = typeof user.id === 'number' ? user.id : extractUserId(user.url);
+      if (!id) return null;
+      return { ...user, id };
+    })
+    .filter((u): u is ApiUserListItem => u !== null);
+};
 
 export const fetchMe = () =>
   apiGet<ApiUserDetail>('/users/me/');
