@@ -62,6 +62,7 @@ import { fetchPoles, createPole, deletePole, type ApiPole } from '@/lib/api/pole
 import { fetchDelegates, createDelegate, type ApiDelegate } from '@/lib/api/delegates';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 export default function Admin() {
   const queryClient = useQueryClient();
@@ -71,7 +72,12 @@ export default function Admin() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Data fetching
-  const { data: usersList = [], isLoading: usersLoading } = useQuery<ApiUserListItem[]>({
+  const {
+    data: usersList = [],
+    isLoading: usersLoading,
+    isError: usersIsError,
+    error: usersError,
+  } = useQuery<ApiUserListItem[]>({
     queryKey: ['users'],
     queryFn: () => fetchUsers(),
   });
@@ -153,6 +159,15 @@ export default function Admin() {
           <Loader2 className="w-6 h-6 animate-spin text-primary" />
           <span className="ml-2 text-muted-foreground">Chargement des données...</span>
         </div>
+      )}
+
+      {usersIsError && (
+        <Alert variant="destructive">
+          <AlertTitle>Impossible de charger la liste des utilisateurs</AlertTitle>
+          <AlertDescription>
+            {usersError instanceof Error ? usersError.message : 'Erreur inconnue.'}
+          </AlertDescription>
+        </Alert>
       )}
 
       {/* Tabs */}
@@ -239,7 +254,7 @@ export default function Admin() {
                       <TableCell>
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <Mail className="w-3 h-3" />
-                          {user.email}
+                          {user.email || '-'}
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
@@ -604,8 +619,12 @@ export default function Admin() {
                         </SelectTrigger>
                         <SelectContent>
                           {usersList.map(user => (
-                            <SelectItem key={user.id} value={user.id.toString()}>
-                              {user.name || user.username}
+                            <SelectItem
+                              key={user.id}
+                              value={user.id.toString()}
+                              disabled={user.id < 0}
+                            >
+                              {user.name || user.username}{user.id < 0 ? ' (ID indisponible)' : ''}
                             </SelectItem>
                           ))}
                         </SelectContent>

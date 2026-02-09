@@ -12,6 +12,17 @@ export interface ApiUser {
 
 export type ApiUserListItem = Omit<ApiUser, 'id'> & { id: number };
 
+function stableNegativeId(seed: string): number {
+  // Hash simple (djb2) → int32 signé, puis forcé négatif.
+  let hash = 5381;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash * 33) ^ seed.charCodeAt(i);
+  }
+  const int32 = hash | 0;
+  const negative = -Math.abs(int32 || 1);
+  return negative;
+}
+
 function extractUserId(url: string): number | null {
   const match = url.match(/\/users\/(\d+)\/?$/);
   if (!match) return null;
@@ -73,8 +84,12 @@ export const fetchUsers = async (
   return users
     .map((user) => {
       const id = typeof user.id === 'number' ? user.id : extractUserId(user.url);
-      if (!id) return null;
-      return { ...user, id };
+      if (id) return { ...user, id };
+
+      // Certains backends utilisent un lookup par username (pas d'ID numérique dans l'URL).
+      // On conserve l'entrée pour l'affichage avec un id synthétique (négatif).
+      const seed = user.url || user.username || JSON.stringify(user);
+      return { ...user, id: stableNegativeId(seed) };
     })
     .filter((u): u is ApiUserListItem => u !== null);
 };

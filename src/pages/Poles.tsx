@@ -51,9 +51,9 @@ export default function Poles() {
 
   const members = selectedPole?.members ?? [];
 
-  const availableUsers = allUsers.filter(
-    (user) => !members.some((member) => member.user === user.id)
-  );
+  const availableUsers = allUsers
+    .filter((user) => user.id > 0)
+    .filter((user) => !members.some((member) => member.user === user.id));
 
   const addMemberMutation = useMutation({
     mutationFn: addPoleMember,
