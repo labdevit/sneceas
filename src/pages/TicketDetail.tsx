@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { 
   ArrowLeft, 
@@ -25,10 +25,11 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { UrgencyBadge } from '@/components/ui/UrgencyBadge';
 import { StatusBadge } from '@/components/ui/StatusBadge';
-import { tickets, ticketTypeLabels, urgencyLabels, statusLabels, currentUser, poles, delegates } from '@/lib/mock-data';
+import { ticketTypeLabels, urgencyLabels, statusLabels } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
 import type { TicketStatus, TicketType, TicketUrgency } from '@/types';
 import { useToast } from '@/hooks/use-toast';
+import { apiRequest } from '@/lib/api';
 import {
   Select,
   SelectContent,
@@ -42,38 +43,174 @@ const statusSteps: TicketStatus[] = [
   'info_needed',
   'processing',
   'hr_escalated',
+  'hr_pending',
   'resolved',
   'closed',
 ];
 
-// Seuls les membres et délégués peuvent classifier
-const canClassify = currentUser.role === 'member' || currentUser.role === 'delegate' || currentUser.role === 'pole_manager' || currentUser.role === 'admin';
-
 const ticketTypes = Object.entries(ticketTypeLabels) as [TicketType, string][];
 const urgencyLevels = Object.entries(urgencyLabels) as [TicketUrgency, string][];
+
+type ApiTicket = {
+  id: number;
+  numero_reference: string;
+  type_probleme: TicketType;
+  priorite: TicketUrgency;
+  statut: TicketStatus;
+  titre: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+  travailleur: string | null;
+  pole?: { id: number; nom: string } | null;
+  entreprise?: { id: number; nom: string } | null;
+  delegue_syndical?: string | null;
+};
+
+type ApiPieceJointe = {
+  id: number;
+  fichier: string;
+  description: string;
+};
+
+type ApiPole = { id: number; nom: string; description?: string | null };
+
+type ApiDelegue = {
+  id: number;
+  user_first_name: string;
+  user_last_name: string;
+  entreprise?: { id: number; nom: string } | null;
+};
+
+type ApiProfile = {
+  user_id_read: number;
+  role: string;
+};
+
+type TicketView = {
+  id: string;
+  reference: string;
+  type: TicketType;
+  urgency: TicketUrgency;
+  status: TicketStatus;
+  subject: string;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+  companyName: string;
+  poleId?: string;
+  poleName?: string;
+  delegateName?: string | null;
+  requesterName?: string | null;
+};
 
 export default function TicketDetail() {
   const { id } = useParams();
   const { toast } = useToast();
-  const ticket = tickets.find((t) => t.id === id);
+  const [ticket, setTicket] = useState<TicketView | null>(null);
+  const [attachments, setAttachments] = useState<ApiPieceJointe[]>([]);
+  const [poles, setPoles] = useState<ApiPole[]>([]);
+  const [delegates, setDelegates] = useState<ApiDelegue[]>([]);
+  const [profile, setProfile] = useState<ApiProfile | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [messages] = useState<Array<{ id: string }>>([]);
   const [newMessage, setNewMessage] = useState('');
   
   // Classification state
   const [classification, setClassification] = useState({
-    type: ticket?.type || '',
-    urgency: ticket?.urgency || '',
-    poleId: ticket?.poleId || '',
-    delegateId: ticket?.delegateId || '',
+    type: '' as TicketType | '',
+    urgency: '' as TicketUrgency | '',
+    poleId: '',
+    delegateId: '',
   });
   const [isClassifying, setIsClassifying] = useState(false);
+
+  const canClassify = useMemo(
+    () =>
+      profile?.role === 'member' ||
+      profile?.role === 'delegate' ||
+      profile?.role === 'pole_manager' ||
+      profile?.role === 'admin',
+    [profile]
+  );
+
+  useEffect(() => {
+    if (!id) {
+      return;
+    }
+    const loadTicket = async () => {
+      try {
+        setIsLoading(true);
+        const [ticketData, piecesData, polesData, delegatesData, profileData] = await Promise.all([
+          apiRequest<ApiTicket>(`/requetes/${id}/`),
+          apiRequest<ApiPieceJointe[] | { results: ApiPieceJointe[] }>(
+            `/pieces-jointes/?requete=${id}`
+          ),
+          apiRequest<ApiPole[] | { results: ApiPole[] }>('/poles/'),
+          apiRequest<ApiDelegue[] | { results: ApiDelegue[] }>('/delegues/'),
+          apiRequest<ApiProfile>('/profils/me/'),
+        ]);
+        const piecesList = Array.isArray(piecesData) ? piecesData : piecesData.results ?? [];
+        const polesList = Array.isArray(polesData) ? polesData : polesData.results ?? [];
+        const delegatesList = Array.isArray(delegatesData)
+          ? delegatesData
+          : delegatesData.results ?? [];
+
+        const mapped: TicketView = {
+          id: String(ticketData.id),
+          reference: ticketData.numero_reference,
+          type: ticketData.type_probleme,
+          urgency: ticketData.priorite,
+          status: ticketData.statut,
+          subject: ticketData.titre,
+          description: ticketData.description,
+          createdAt: ticketData.created_at,
+          updatedAt: ticketData.updated_at,
+          companyName: ticketData.entreprise?.nom ?? '-',
+          poleId: ticketData.pole ? String(ticketData.pole.id) : undefined,
+          poleName: ticketData.pole?.nom,
+          delegateName: ticketData.delegue_syndical ?? null,
+          requesterName: ticketData.travailleur ?? null,
+        };
+
+        setTicket(mapped);
+        setAttachments(piecesList);
+        setPoles(polesList);
+        setDelegates(delegatesList);
+        setProfile(profileData);
+        setClassification({
+          type: ticketData.type_probleme,
+          urgency: ticketData.priorite,
+          poleId: ticketData.pole ? String(ticketData.pole.id) : '',
+          delegateId: '',
+        });
+        setErrorMessage(null);
+      } catch {
+        setErrorMessage("Impossible de charger la requête.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadTicket();
+  }, [id]);
 
   // Check if ticket needs classification (no type or urgency)
   const needsClassification = ticket && (!ticket.type || !ticket.urgency);
 
-  if (!ticket) {
+  if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
-        <p className="text-muted-foreground">Requête non trouvée</p>
+        <p className="text-muted-foreground">Chargement...</p>
+      </div>
+    );
+  }
+
+  if (errorMessage || !ticket) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <p className="text-muted-foreground">{errorMessage ?? 'Requête non trouvée'}</p>
         <Button variant="link" asChild className="mt-2">
           <Link to="/tickets">Retour à la liste</Link>
         </Button>
@@ -92,15 +229,31 @@ export default function TicketDetail() {
 
   const handleSaveClassification = async () => {
     setIsClassifying(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    
-    toast({
-      title: 'Classification enregistrée',
-      description: 'Le type et l\'urgence ont été mis à jour avec succès.',
-    });
-    
-    setIsClassifying(false);
+    try {
+      await apiRequest(`/requetes/${ticket.id}/`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          type_probleme: classification.type,
+          priorite: classification.urgency,
+          pole_id: classification.poleId ? Number(classification.poleId) : undefined,
+          delegue_syndical_id: classification.delegateId
+            ? Number(classification.delegateId)
+            : undefined,
+        }),
+      });
+      toast({
+        title: 'Classification enregistrée',
+        description: "Le type et l'urgence ont été mis à jour avec succès.",
+      });
+    } catch {
+      toast({
+        title: 'Erreur',
+        description: "Impossible d'enregistrer la classification.",
+        variant: 'destructive',
+      });
+    } finally {
+      setIsClassifying(false);
+    }
   };
 
   return (
@@ -196,19 +349,27 @@ export default function TicketDetail() {
             </div>
 
             {/* Attachments */}
-            {ticket.attachments.length > 0 && (
+            {attachments.length > 0 && (
               <div className="mt-6">
                 <h3 className="text-sm font-semibold mb-3">Pièces jointes</h3>
                 <div className="flex flex-wrap gap-2">
-                  {ticket.attachments.map((file) => (
+                  {attachments.map((file) => (
                     <Button
                       key={file.id}
                       variant="outline"
                       size="sm"
                       className="h-auto py-2"
+                      asChild
                     >
-                      <Paperclip className="w-4 h-4 mr-2" />
-                      {file.name}
+                      <a
+                        href={file.fichier}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center"
+                      >
+                        <Paperclip className="w-4 h-4 mr-2" />
+                        {file.description || 'Pièce jointe'}
+                      </a>
                     </Button>
                   ))}
                 </div>
@@ -222,8 +383,7 @@ export default function TicketDetail() {
               ticketId={ticket.id} 
               ticketReference={ticket.reference}
               ticketSubject={ticket.subject}
-              recipientEmail={ticket.user.email}
-              recipientName={`${ticket.user.firstName} ${ticket.user.lastName}`}
+              recipientName={ticket.requesterName ?? ''}
               canManage={canClassify} 
             />
           )}
@@ -234,56 +394,31 @@ export default function TicketDetail() {
               <MessageSquare className="w-5 h-5 text-muted-foreground" />
               <h3 className="font-semibold">Échanges</h3>
               <Badge variant="secondary" className="ml-auto">
-                {ticket.messages.length}
+                {messages.length}
               </Badge>
             </div>
 
             <ScrollArea className="h-80">
               <div className="p-4 space-y-4">
-                {ticket.messages.length === 0 ? (
+                {messages.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">
                     Aucun message pour le moment
                   </p>
                 ) : (
-                  ticket.messages.map((message) => (
+                  messages.map((message) => (
                     <div
                       key={message.id}
-                      className={cn(
-                        'flex gap-3',
-                        message.userId === currentUser.id && 'flex-row-reverse'
-                      )}
+                      className="flex gap-3"
                     >
                       <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                         <User className="w-4 h-4 text-primary" />
                       </div>
-                      <div
-                        className={cn(
-                          'flex-1 max-w-[80%]',
-                          message.userId === currentUser.id && 'text-right'
-                        )}
-                      >
+                      <div className="flex-1 max-w-[80%]">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="text-sm font-medium">
-                            {message.user.firstName} {message.user.lastName}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(message.createdAt).toLocaleDateString('fr-FR')}
-                          </span>
-                          {message.isInternal && (
-                            <Badge variant="outline" className="text-xs">
-                              Interne
-                            </Badge>
-                          )}
+                          <span className="text-sm font-medium">Utilisateur</span>
                         </div>
-                        <div
-                          className={cn(
-                            'p-3 rounded-lg',
-                            message.userId === currentUser.id
-                              ? 'bg-primary text-primary-foreground'
-                              : 'bg-muted'
-                          )}
-                        >
-                          <p className="text-sm">{message.content}</p>
+                        <div className="p-3 rounded-lg bg-muted">
+                          <p className="text-sm">Message</p>
                         </div>
                       </div>
                     </div>
@@ -405,8 +540,8 @@ export default function TicketDetail() {
                     </SelectTrigger>
                     <SelectContent>
                       {poles.map((pole) => (
-                        <SelectItem key={pole.id} value={pole.id}>
-                          {pole.name}
+                        <SelectItem key={pole.id} value={String(pole.id)}>
+                          {pole.nom}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -425,8 +560,8 @@ export default function TicketDetail() {
                     </SelectTrigger>
                     <SelectContent>
                       {delegates.map((delegate) => (
-                        <SelectItem key={delegate.id} value={delegate.id}>
-                          {delegate.user.firstName} {delegate.user.lastName}
+                        <SelectItem key={delegate.id} value={String(delegate.id)}>
+                          {delegate.user_first_name} {delegate.user_last_name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -453,27 +588,27 @@ export default function TicketDetail() {
                 <Building2 className="w-4 h-4 text-muted-foreground" />
                 <div>
                   <p className="text-xs text-muted-foreground">Compagnie</p>
-                  <p className="font-medium">{ticket.company.name}</p>
+                  <p className="font-medium">{ticket.companyName}</p>
                 </div>
               </div>
 
-              {ticket.pole && (
+              {ticket.poleName && (
                 <div className="flex items-center gap-3">
                   <FileText className="w-4 h-4 text-muted-foreground" />
                   <div>
                     <p className="text-xs text-muted-foreground">Pôle assigné</p>
-                    <p className="font-medium">{ticket.pole.name}</p>
+                    <p className="font-medium">{ticket.poleName}</p>
                   </div>
                 </div>
               )}
 
-              {ticket.delegate && (
+              {ticket.delegateName && (
                 <div className="flex items-center gap-3">
                   <Users className="w-4 h-4 text-muted-foreground" />
                   <div>
                     <p className="text-xs text-muted-foreground">Délégué</p>
                     <p className="font-medium">
-                      {ticket.delegate.user.firstName} {ticket.delegate.user.lastName}
+                      {ticket.delegateName}
                     </p>
                   </div>
                 </div>
@@ -512,11 +647,11 @@ export default function TicketDetail() {
           </div>
 
           {/* HR Interactions */}
-          {ticket.hrInteractions.length > 0 && (
+          {false && (
             <div className="bg-card rounded-xl border shadow-card p-6">
               <h3 className="font-semibold mb-4">Interactions RH</h3>
               <div className="space-y-4">
-                {ticket.hrInteractions.map((interaction) => (
+                {([] as any).map((interaction: any) => (
                   <div
                     key={interaction.id}
                     className="p-3 bg-muted rounded-lg"

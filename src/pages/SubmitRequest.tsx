@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, ChevronRight, Upload, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { cn } from '@/lib/utils';
-import { companies, currentUser, ticketTypeDescriptions, ticketTypeLabels, urgencyLabels } from '@/lib/mock-data';
+import { ticketTypeDescriptions, urgencyLabels } from '@/lib/mock-data';
 import type { TicketType, TicketUrgency } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -22,25 +22,20 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { apiRequest } from '@/lib/api';
 
-// Seuls les membres et délégués peuvent classifier les requêtes
-const canClassify = currentUser.role === 'member' || currentUser.role === 'delegate';
+type ApiCompany = { id: number; nom: string; code: string };
+type ApiPole = { id: number; nom: string; description: string; types_problemes: string[] };
+type ApiProfile = {
+  id: number;
+  role: string;
+  entreprise: { id: number; nom: string } | null;
+  user_id_read: number;
+  first_name: string;
+  last_name: string;
+  user_email: string;
+};
 
-const stepsSimple = [
-  { id: 1, title: 'Identification', description: 'Vérifiez vos informations' },
-  { id: 2, title: 'Description', description: 'Expliquez votre situation' },
-];
-
-const stepsFull = [
-  { id: 1, title: 'Identification', description: 'Vérifiez vos informations' },
-  { id: 2, title: 'Type & Urgence', description: 'Classifiez la requête' },
-  { id: 3, title: 'Détails', description: 'Décrivez la situation' },
-];
-
-const steps = canClassify ? stepsFull : stepsSimple;
-const totalSteps = steps.length;
-
-const ticketTypes = Object.entries(ticketTypeLabels) as [TicketType, string][];
 const urgencyLevels = Object.entries(urgencyLabels) as [TicketUrgency, string][];
 
 export default function SubmitRequest() {
@@ -48,10 +43,16 @@ export default function SubmitRequest() {
   const { toast } = useToast();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [profile, setProfile] = useState<ApiProfile | null>(null);
+  const [companies, setCompanies] = useState<ApiCompany[]>([]);
+  const [poles, setPoles] = useState<ApiPole[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
-    companyId: currentUser.companyId,
+    companyId: '',
+    poleId: '',
     type: '' as TicketType | '',
     urgency: '' as TicketUrgency | '',
     otherTypeDetails: '',
@@ -60,33 +61,88 @@ export default function SubmitRequest() {
     files: [] as File[],
   });
 
+  const canClassify = useMemo(
+    () => profile?.role === 'member' || profile?.role === 'delegate',
+    [profile]
+  );
+  const steps = useMemo(
+    () => [
+      { id: 1, title: 'Identification', description: 'Vérifiez vos informations' },
+      { id: 2, title: 'Type & Urgence', description: 'Classifiez la requête' },
+      { id: 3, title: 'Détails', description: 'Décrivez la situation' },
+    ],
+    []
+  );
+  const totalSteps = 3;
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setIsLoading(true);
+        const [profileData, companiesData, polesData] = await Promise.all([
+          apiRequest<ApiProfile>('/profils/me/'),
+          apiRequest<ApiCompany[] | { results: ApiCompany[] }>('/entreprises/', { auth: false }),
+          apiRequest<ApiPole[] | { results: ApiPole[] }>('/poles/'),
+        ]);
+        const companiesList = Array.isArray(companiesData)
+          ? companiesData
+          : companiesData.results ?? [];
+        const polesList = Array.isArray(polesData) ? polesData : polesData.results ?? [];
+        const defaultPoleId = polesList[0] ? String(polesList[0].id) : '';
+        const defaultType = polesList[0]?.types_problemes?.[0] ?? 'other';
+
+        setProfile(profileData);
+        setCompanies(companiesList);
+        setPoles(polesList);
+        setFormData((prev) => ({
+          ...prev,
+          companyId: profileData.entreprise ? String(profileData.entreprise.id) : prev.companyId,
+          poleId: prev.poleId || defaultPoleId,
+          type: prev.type || defaultType,
+          urgency: prev.urgency || 'medium',
+        }));
+        setErrorMessage(null);
+      } catch {
+        setErrorMessage("Impossible de charger les données du formulaire.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  useEffect(() => {
+    if (poles.length === 0) {
+      return;
+    }
+    if (!formData.poleId) {
+      const firstPoleId = String(poles[0].id);
+      const firstType = poles[0]?.types_problemes?.[0] ?? 'other';
+      setFormData((prev) => ({
+        ...prev,
+        poleId: firstPoleId,
+        type: prev.type || firstType,
+      }));
+    }
+  }, [formData.poleId, formData.type, poles]);
+
   const canProceed = () => {
-    if (canClassify) {
-      // Mode complet pour membres/délégués
-      switch (currentStep) {
-        case 1:
-          return !!formData.companyId;
-        case 2:
-          return (
-            !!formData.type &&
-            !!formData.urgency &&
-            (formData.type !== 'other' || formData.otherTypeDetails.length >= 5)
-          );
-        case 3:
-          return formData.subject.length >= 5 && formData.description.length >= 20;
-        default:
-          return false;
-      }
-    } else {
-      // Mode simplifié pour employés
-      switch (currentStep) {
-        case 1:
-          return !!formData.companyId;
-        case 2:
-          return formData.subject.length >= 5 && formData.description.length >= 20;
-        default:
-          return false;
-      }
+    if (!formData.companyId || !formData.poleId) {
+      return false;
+    }
+    switch (currentStep) {
+      case 1:
+        return !!formData.companyId && !!formData.poleId;
+      case 2:
+        if (!canClassify) {
+          return true;
+        }
+        return !!formData.poleId && !!formData.urgency;
+      case 3:
+        return formData.subject.length >= 5 && formData.description.length >= 20;
+      default:
+        return false;
     }
   };
 
@@ -105,16 +161,54 @@ export default function SubmitRequest() {
   };
 
   const handleSubmit = async () => {
+    if (!profile) {
+      return;
+    }
     setIsSubmitting(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    
-    toast({
-      title: 'Requête envoyée !',
-      description: 'Votre requête a été soumise avec succès. Référence: REQ-2026-0005',
-    });
-    
-    navigate('/tickets');
+    try {
+      const payload = {
+        travailleur_id: profile.user_id_read,
+        entreprise_id: Number(formData.companyId),
+        pole_id: Number(formData.poleId),
+        type_probleme: formData.type || 'other',
+        priorite: formData.urgency || 'medium',
+        titre: formData.subject,
+        description: formData.description,
+      };
+      const created = await apiRequest<{ id: number; numero_reference: string }>('/requetes/', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+
+      if (formData.files.length > 0) {
+        await Promise.all(
+          formData.files.map((file) => {
+            const data = new FormData();
+            data.append('fichier', file);
+            data.append('type_document', 'AUTRE');
+            data.append('description', 'Pièce jointe');
+            return apiRequest(`/requetes/${created.id}/pieces-jointes/`, {
+              method: 'POST',
+              body: data,
+            });
+          })
+        );
+      }
+
+      toast({
+        title: 'Requête envoyée !',
+        description: `Votre requête a été soumise avec succès. Référence: ${created.numero_reference}`,
+      });
+      navigate('/tickets');
+    } catch {
+      toast({
+        title: 'Erreur',
+        description: "Impossible d'envoyer la requête.",
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -193,6 +287,11 @@ export default function SubmitRequest() {
 
       {/* Form Card */}
       <div className="bg-card rounded-xl border shadow-card p-6">
+        {isLoading ? (
+          <div className="text-sm text-muted-foreground mb-4">Chargement...</div>
+        ) : errorMessage ? (
+          <div className="text-sm text-destructive mb-4">{errorMessage}</div>
+        ) : null}
         {/* Step 1: Identification */}
         {currentStep === 1 && (
           <div className="space-y-6 animate-slide-up">
@@ -202,7 +301,7 @@ export default function SubmitRequest() {
                 <div>
                   <Label>Nom complet</Label>
                   <Input
-                    value={`${currentUser.firstName} ${currentUser.lastName}`}
+                    value={profile ? `${profile.first_name} ${profile.last_name}` : ''}
                     disabled
                     className="mt-1.5 bg-muted"
                   />
@@ -210,7 +309,7 @@ export default function SubmitRequest() {
                 <div>
                   <Label>Email</Label>
                   <Input
-                    value={currentUser.email}
+                    value={profile?.user_email ?? ''}
                     disabled
                     className="mt-1.5 bg-muted"
                   />
@@ -229,8 +328,8 @@ export default function SubmitRequest() {
                 </SelectTrigger>
                 <SelectContent>
                   {companies.map((company) => (
-                    <SelectItem key={company.id} value={company.id}>
-                      {company.name}
+                    <SelectItem key={company.id} value={String(company.id)}>
+                      {company.nom}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -242,60 +341,65 @@ export default function SubmitRequest() {
           </div>
         )}
 
-        {/* Step 2: Type & Urgency (seulement pour membres/délégués) */}
-        {canClassify && currentStep === 2 && (
+        {/* Step 2: Type & Urgency */}
+        {currentStep === 2 && (
           <div className="space-y-8 animate-slide-up">
             <div>
               <h2 className="text-lg font-semibold mb-4">Type de requête *</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {ticketTypes.map(([value, label]) => (
-                  <Tooltip key={value}>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        onClick={() => setFormData({ ...formData, type: value })}
-                        className={cn(
-                          'p-4 rounded-lg border-2 text-left transition-all',
-                          'hover:border-primary/50 hover:bg-accent/50',
-                          formData.type === value
-                            ? 'border-primary bg-primary/5'
-                            : 'border-border'
-                        )}
-                        title={ticketTypeDescriptions[value] ?? label}
-                      >
-                        <span className="font-medium">{label}</span>
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs">
-                      <p className="text-sm">
-                        {ticketTypeDescriptions[value] ?? label}
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                ))}
-              </div>
-              {formData.type === 'other' && (
-                <div className="mt-4">
-                  <Label htmlFor="other-type">Précisez votre type *</Label>
-                  <Input
-                    id="other-type"
-                    placeholder="Ex: Demande liée à..."
-                    value={formData.otherTypeDetails}
-                    onChange={(e) => setFormData({ ...formData, otherTypeDetails: e.target.value })}
-                    className="mt-1.5"
-                  />
-                  <p className="text-sm text-muted-foreground mt-1.5">
-                    Minimum 5 caractères
-                  </p>
-                </div>
+              {!canClassify && (
+                <p className="text-sm text-muted-foreground mb-3">
+                  Cette étape est préremplie automatiquement.
+                </p>
               )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {poles.map((pole) => {
+                  const isSelected = formData.poleId === String(pole.id);
+                  const defaultType = pole.types_problemes?.[0] ?? 'other';
+                  return (
+                    <Tooltip key={pole.id}>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFormData({
+                              ...formData,
+                              poleId: String(pole.id),
+                              type: defaultType as TicketType,
+                            })
+                          }
+                          className={cn(
+                            'p-4 rounded-lg border-2 text-left transition-all',
+                            'hover:border-primary/50 hover:bg-accent/50',
+                            isSelected ? 'border-primary bg-primary/5' : 'border-border'
+                          )}
+                          title={pole.description}
+                        >
+                          <span className="font-medium">{pole.nom}</span>
+                          {pole.description && (
+                            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                              {pole.description}
+                            </p>
+                          )}
+                        </button>
+                      </TooltipTrigger>
+                      {pole.description && (
+                        <TooltipContent className="max-w-xs">
+                          <p className="text-sm">{pole.description}</p>
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+                  );
+                })}
+              </div>
             </div>
 
             <div>
               <h2 className="text-lg font-semibold mb-4">Niveau d'urgence *</h2>
               <RadioGroup
                 value={formData.urgency}
-                onValueChange={(value) => setFormData({ ...formData, urgency: value as TicketUrgency })}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, urgency: value as TicketUrgency })
+                }
                 className="grid grid-cols-2 md:grid-cols-4 gap-3"
               >
                 {urgencyLevels.map(([value, label]) => (
@@ -331,8 +435,8 @@ export default function SubmitRequest() {
           </div>
         )}
 
-        {/* Step Details (Step 3 pour membres/délégués, Step 2 pour employés) */}
-        {((canClassify && currentStep === 3) || (!canClassify && currentStep === 2)) && (
+        {/* Step 3: Détails */}
+        {currentStep === 3 && (
           <div className="space-y-6 animate-slide-up">
             <div>
               <Label htmlFor="subject">Objet de la requête *</Label>

@@ -21,6 +21,18 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import { poleMembers, users as mockUsers } from '@/lib/mock-data';
 import { apiRequest } from '@/lib/api';
@@ -55,16 +67,22 @@ type ApiProfile = {
   email?: string;
 };
 
+type PoleMemberWithUser = PoleMember & {
+  userFirstName?: string;
+  userLastName?: string;
+  userEmail?: string;
+};
+
 export default function Poles() {
   const [polesList, setPolesList] = useState<ApiPole[]>([]);
   const [selectedPoleId, setSelectedPoleId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [membersByPole, setMembersByPole] = useState<Record<string, PoleMember[]>>(() => {
+  const [membersByPole, setMembersByPole] = useState<Record<string, PoleMemberWithUser[]>>(() => {
     return poleMembers.reduce((acc, member) => {
       acc[member.poleId] = [...(acc[member.poleId] ?? []), member];
       return acc;
-    }, {} as Record<string, PoleMember[]>);
+    }, {} as Record<string, PoleMemberWithUser[]>);
   });
   const [usersList, setUsersList] = useState(mockUsers);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -72,6 +90,7 @@ export default function Poles() {
   const [isPoleDialogOpen, setIsPoleDialogOpen] = useState(false);
   const [newPoleName, setNewPoleName] = useState('');
   const [newPoleDescription, setNewPoleDescription] = useState('');
+  const [memberError, setMemberError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadPoles = async () => {
@@ -111,26 +130,30 @@ export default function Poles() {
     loadUsers();
   }, []);
 
-  useEffect(() => {
-    const loadMembers = async () => {
-      if (!selectedPoleId) {
-        return;
-      }
-      try {
-        const data = await apiRequest<ApiPoleMember[]>(`/poles/${selectedPoleId}/members/`);
-        const mapped: PoleMember[] = data.map((member) => ({
-          id: member.id.toString(),
-          poleId: selectedPoleId,
-          userId: member.user_id?.toString() ?? '',
-          role: member.role,
-        }));
-        setMembersByPole((prev) => ({ ...prev, [selectedPoleId]: mapped }));
-      } catch {
-        // keep existing
-      }
-    };
+  const loadMembers = async (poleId: string) => {
+    if (!poleId) {
+      return;
+    }
+    try {
+      const data = await apiRequest<ApiPoleMember[]>(`/poles/${poleId}/members/`);
+      const mapped: PoleMemberWithUser[] = data.map((member) => ({
+        id: member.id.toString(),
+        poleId,
+        userId: member.user_id?.toString() ?? '',
+        role: member.role,
+        userFirstName: member.user_first_name,
+        userLastName: member.user_last_name,
+        userEmail: member.user_email,
+      }));
+      setMembersByPole((prev) => ({ ...prev, [poleId]: mapped }));
+      setMemberError(null);
+    } catch {
+      // keep existing
+    }
+  };
 
-    loadMembers();
+  useEffect(() => {
+    loadMembers(selectedPoleId);
   }, [selectedPoleId]);
 
   const selectedPole = useMemo(
@@ -142,14 +165,15 @@ export default function Poles() {
 
   const memberEntries = membersByPole[selectedPole?.id ?? ''] ?? [];
   const isAtCapacity = memberEntries.length >= 6;
-  const members = memberEntries
-    .map((entry) => ({
-      entry,
-      user: usersList.find((user) => user.id === entry.userId),
-    }))
-    .filter(
-      (item): item is { entry: PoleMember; user: (typeof usersList)[number] } => !!item.user
-    );
+  const members = memberEntries.map((entry) => ({
+    entry,
+    user: {
+      id: entry.userId,
+      firstName: entry.userFirstName ?? '',
+      lastName: entry.userLastName ?? '',
+      email: entry.userEmail ?? '',
+    },
+  }));
 
   const availableUsers = usersList.filter(
     (user) => !memberEntries.some((entry) => entry.userId === user.id)
@@ -176,6 +200,7 @@ export default function Poles() {
           role: nextRole,
         }),
       });
+      const selectedUser = usersList.find((user) => user.id === selectedUserId);
       setMembersByPole((prev) => ({
         ...prev,
         [selectedPole.id]: [
@@ -185,10 +210,16 @@ export default function Poles() {
             poleId: selectedPole.id,
             userId: created.user_id?.toString() ?? selectedUserId,
             role: created.role,
+            userFirstName: selectedUser?.firstName ?? '',
+            userLastName: selectedUser?.lastName ?? '',
+            userEmail: selectedUser?.email ?? '',
           },
         ],
       }));
+      setMemberError(null);
     } catch {
+      setMemberError("Ce membre est déjà associé à ce pôle.");
+      await loadMembers(selectedPole.id);
       return;
     }
 
@@ -210,6 +241,27 @@ export default function Poles() {
       setMembersByPole((prev) => ({
         ...prev,
         [selectedPole.id]: (prev[selectedPole.id] ?? []).filter((entry) => entry.userId !== userId),
+      }));
+      setMemberError(null);
+    } catch {
+      return;
+    }
+  };
+
+  const handleChangeMemberRole = async (memberId: string, newRole: PoleMember['role']) => {
+    if (!selectedPoleId) {
+      return;
+    }
+    try {
+      await apiRequest(`/pole-members/${memberId}/`, {
+        method: 'PATCH',
+        body: JSON.stringify({ role: newRole }),
+      });
+      setMembersByPole((prev) => ({
+        ...prev,
+        [selectedPoleId]: (prev[selectedPoleId] ?? []).map((entry) =>
+          entry.id === memberId ? { ...entry, role: newRole } : entry
+        ),
       }));
     } catch {
       return;
@@ -284,32 +336,38 @@ export default function Poles() {
               Créer
             </Button>
           </CardHeader>
-          <CardContent className="space-y-2">
-            {isLoading ? (
-              <div className="text-sm text-muted-foreground">Chargement...</div>
-            ) : errorMessage ? (
-              <div className="text-sm text-destructive">{errorMessage}</div>
-            ) : (
-              polesList.map((pole) => (
-              <button
-                key={pole.id}
-                type="button"
-                onClick={() => setSelectedPoleId(pole.id.toString())}
-                className={cn(
-                  'w-full rounded-lg border px-4 py-3 text-left transition-colors',
-                  'hover:bg-accent/50',
-                  selectedPole?.id === pole.id ? 'border-primary bg-primary/5' : 'border-border'
+          <CardContent className="space-y-2 h-[70vh]">
+            <ScrollArea className="h-full pr-2">
+              <div className="space-y-2">
+                {isLoading ? (
+                  <div className="text-sm text-muted-foreground">Chargement...</div>
+                ) : errorMessage ? (
+                  <div className="text-sm text-destructive">{errorMessage}</div>
+                ) : (
+                  polesList.map((pole) => (
+                    <button
+                      key={pole.id}
+                      type="button"
+                      onClick={() => setSelectedPoleId(pole.id.toString())}
+                      className={cn(
+                        'w-full rounded-lg border px-4 py-3 text-left transition-colors',
+                        'hover:bg-accent/50',
+                        selectedPole?.id === pole.id
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border'
+                      )}
+                    >
+                      <div className="font-medium">{pole.nom}</div>
+                      {pole.description && (
+                        <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                          {pole.description}
+                        </div>
+                      )}
+                    </button>
+                  ))
                 )}
-              >
-                <div className="font-medium">{pole.nom}</div>
-                {pole.description && (
-                  <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                    {pole.description}
-                  </div>
-                )}
-              </button>
-              ))
-            )}
+              </div>
+            </ScrollArea>
           </CardContent>
         </Card>
 
@@ -356,6 +414,9 @@ export default function Poles() {
                     Limite atteinte : 6 membres maximum par pôle.
                   </p>
                 )}
+                {memberError && (
+                  <p className="text-xs text-destructive">{memberError}</p>
+                )}
 
                 <div className="space-y-3">
                   {members.length === 0 ? (
@@ -376,25 +437,53 @@ export default function Poles() {
                             <Mail className="w-3 h-3" />
                             <span className="truncate">{user.email}</span>
                           </div>
-                          <div className="mt-2">
-                            <Badge variant={entry.role === 'head' ? 'default' : 'secondary'}>
-                              {entry.role === 'head'
-                                ? 'Chef de pôle'
-                                : entry.role === 'assistant'
-                                  ? 'Assistant'
-                                  : 'Membre'}
-                            </Badge>
-                          </div>
+                        <div className="mt-2">
+                          <Select
+                            value={entry.role}
+                            onValueChange={(value) =>
+                              handleChangeMemberRole(entry.id, value as PoleMember['role'])
+                            }
+                          >
+                            <SelectTrigger className="h-8">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="head">Chef de pôle</SelectItem>
+                              <SelectItem value="assistant">Assistant</SelectItem>
+                              <SelectItem value="member">Membre</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-destructive hover:text-destructive"
-                          disabled={!canRemoveMember(entry)}
-                          onClick={() => handleRemoveMember(user.id)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        </div>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-destructive hover:text-destructive"
+                              disabled={!canRemoveMember(entry)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Supprimer ce membre ?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Cette action est irréversible. Le membre sera retiré du pôle.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Annuler</AlertDialogCancel>
+                              <AlertDialogAction
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                onClick={() => handleRemoveMember(user.id)}
+                              >
+                                Supprimer
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     ))
                   )}

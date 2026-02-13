@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Filter, Plus, Clock, ArrowUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -20,22 +20,56 @@ import {
 } from '@/components/ui/table';
 import { UrgencyBadge } from '@/components/ui/UrgencyBadge';
 import { StatusBadge } from '@/components/ui/StatusBadge';
-import { tickets, ticketTypeLabels, statusLabels, urgencyLabels } from '@/lib/mock-data';
+import { ticketTypeLabels, statusLabels, urgencyLabels } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
+import { apiRequest } from '@/lib/api';
+
+type ApiTicket = {
+  id: number;
+  numero_reference: string;
+  type_probleme: string;
+  priorite: string;
+  statut: string;
+  titre: string;
+  updated_at: string;
+  travailleur: string | null;
+  pole?: { id: number; nom: string } | null;
+  entreprise?: { id: number; nom: string } | null;
+};
 
 export default function TicketsList() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [urgencyFilter, setUrgencyFilter] = useState('all');
+  const [tickets, setTickets] = useState<ApiTicket[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const filteredTickets = tickets.filter((ticket) => {
+  useEffect(() => {
+    const loadTickets = async () => {
+      try {
+        setIsLoading(true);
+        const data = await apiRequest<{ results: ApiTicket[] }>('/requetes/');
+        setTickets(data.results);
+        setErrorMessage(null);
+      } catch {
+        setErrorMessage("Impossible de charger les requêtes.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadTickets();
+  }, []);
+
+  const filteredTickets = useMemo(() => tickets.filter((ticket) => {
     const matchesSearch =
-      ticket.reference.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ticket.subject.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || ticket.status === statusFilter;
-    const matchesUrgency = urgencyFilter === 'all' || ticket.urgency === urgencyFilter;
+      ticket.numero_reference.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ticket.titre.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || ticket.statut === statusFilter;
+    const matchesUrgency = urgencyFilter === 'all' || ticket.priorite === urgencyFilter;
     return matchesSearch && matchesStatus && matchesUrgency;
-  });
+  }), [tickets, searchQuery, statusFilter, urgencyFilter]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -101,6 +135,9 @@ export default function TicketsList() {
             <TableRow className="bg-muted/50">
               <TableHead className="font-semibold">Référence</TableHead>
               <TableHead className="font-semibold">Type</TableHead>
+              <TableHead className="font-semibold">Pôle</TableHead>
+              <TableHead className="font-semibold">Entreprise</TableHead>
+              <TableHead className="font-semibold">Demandeur</TableHead>
               <TableHead className="font-semibold">
                 <div className="flex items-center gap-1">
                   Urgence
@@ -113,9 +150,21 @@ export default function TicketsList() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredTickets.length === 0 ? (
+            {isLoading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8">
+                <TableCell colSpan={9} className="text-center py-8">
+                  <p className="text-muted-foreground">Chargement...</p>
+                </TableCell>
+              </TableRow>
+            ) : errorMessage ? (
+              <TableRow>
+                <TableCell colSpan={9} className="text-center py-8">
+                  <p className="text-destructive">{errorMessage}</p>
+                </TableCell>
+              </TableRow>
+            ) : filteredTickets.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={9} className="text-center py-8">
                   <p className="text-muted-foreground">Aucune requête trouvée</p>
                 </TableCell>
               </TableRow>
@@ -127,25 +176,40 @@ export default function TicketsList() {
                 >
                   <TableCell>
                     <div>
-                      <p className="font-mono text-sm font-medium">{ticket.reference}</p>
+                      <p className="font-mono text-sm font-medium">{ticket.numero_reference}</p>
                       <p className="text-sm text-muted-foreground truncate max-w-[200px]">
-                        {ticket.subject}
+                        {ticket.titre}
                       </p>
                     </div>
                   </TableCell>
                   <TableCell>
-                    <span className="text-sm">{ticketTypeLabels[ticket.type]}</span>
+                    <span className="text-sm">{ticketTypeLabels[ticket.type_probleme]}</span>
                   </TableCell>
                   <TableCell>
-                    <UrgencyBadge urgency={ticket.urgency} size="sm" />
+                    <span className="text-sm text-muted-foreground">
+                      {ticket.pole?.nom ?? '-'}
+                    </span>
                   </TableCell>
                   <TableCell>
-                    <StatusBadge status={ticket.status} size="sm" />
+                    <span className="text-sm text-muted-foreground">
+                      {ticket.entreprise?.nom ?? '-'}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-sm text-muted-foreground">
+                      {ticket.travailleur ?? '-'}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <UrgencyBadge urgency={ticket.priorite} size="sm" />
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge status={ticket.statut} size="sm" />
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                       <Clock className="w-3.5 h-3.5" />
-                      {new Date(ticket.updatedAt).toLocaleDateString('fr-FR')}
+                      {new Date(ticket.updated_at).toLocaleDateString('fr-FR')}
                     </div>
                   </TableCell>
                   <TableCell className="text-right">

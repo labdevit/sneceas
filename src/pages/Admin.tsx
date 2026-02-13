@@ -138,6 +138,8 @@ type ApiDelegate = {
 const roleLabels: Record<UserRole, string> = {
   admin: 'Administrateur',
   pole_manager: 'Responsable Pôle',
+  head: 'Chef de pôle (membre)',
+  assistant: 'Assistant de pôle',
   delegate: 'Délégué',
   member: 'Membre',
 };
@@ -145,6 +147,8 @@ const roleLabels: Record<UserRole, string> = {
 const roleBadgeVariants: Record<UserRole, string> = {
   admin: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
   pole_manager: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
+  head: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400',
+  assistant: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400',
   delegate: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
   member: 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400',
 };
@@ -992,6 +996,8 @@ export default function Admin() {
                           <SelectContent>
                             <SelectItem value="admin">Administrateur</SelectItem>
                             <SelectItem value="pole_manager">Responsable Pôle</SelectItem>
+                            <SelectItem value="head">Chef de pôle (membre)</SelectItem>
+                            <SelectItem value="assistant">Assistant de pôle</SelectItem>
                             <SelectItem value="delegate">Délégué</SelectItem>
                             <SelectItem value="member">Membre</SelectItem>
                           </SelectContent>

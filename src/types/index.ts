@@ -1,5 +1,5 @@
 // User roles
-export type UserRole = 'admin' | 'pole_manager' | 'delegate' | 'member';
+export type UserRole = 'admin' | 'pole_manager' | 'head' | 'assistant' | 'delegate' | 'member';
 
 // User interface
 export interface User {
