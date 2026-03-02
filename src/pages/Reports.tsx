@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -20,85 +20,224 @@ import {
   PieChart,
   Pie,
   Cell,
-  LineChart,
-  Line,
   Legend,
   AreaChart,
   Area,
 } from 'recharts';
-import { 
-  BarChart3, 
-  TrendingUp, 
+import {
+  BarChart3,
+  TrendingUp,
   PieChart as PieChartIcon,
   Calendar,
   Building2,
   AlertTriangle,
   CheckCircle2,
-  Clock
+  Clock,
 } from 'lucide-react';
-import { adminDashboardStats, companies, statusLabels, urgencyLabels } from '@/lib/mock-data';
+import { getRequetes, getEntreprises, type RequeteListDto, type EntrepriseDto } from '@/lib/api';
+import { ticketTypeLabels } from '@/lib/mock-data';
+import { statusLabels, urgencyLabels } from '@/lib/mock-data';
 
-// Data for charts
-const ticketsByUrgency = [
-  { name: 'Faible', value: adminDashboardStats.ticketsByUrgency.low, color: 'hsl(var(--urgency-low))' },
-  { name: 'Moyenne', value: adminDashboardStats.ticketsByUrgency.medium, color: 'hsl(var(--urgency-medium))' },
-  { name: 'Élevée', value: adminDashboardStats.ticketsByUrgency.high, color: 'hsl(var(--urgency-high))' },
-  { name: 'Critique', value: adminDashboardStats.ticketsByUrgency.critical, color: 'hsl(var(--urgency-critical))' },
-];
+const STATUT_CLOSED = ['resolved', 'non_resolu', 'closed'];
+const STATUS_KEYS = ['new', 'info_needed', 'processing', 'hr_escalated', 'hr_pending', 'resolved', 'non_resolu', 'closed'] as const;
+const COLORS = ['hsl(220, 70%, 50%)', 'hsl(160, 60%, 45%)', 'hsl(30, 80%, 55%)', 'hsl(280, 60%, 50%)', 'hsl(340, 70%, 50%)', 'hsl(200, 60%, 50%)', 'hsl(100, 50%, 45%)', 'hsl(25, 95%, 44%)'];
 
-const ticketsByStatus = [
-  { name: 'Nouveau', value: adminDashboardStats.ticketsByStatus.new },
-  { name: 'Besoin infos', value: adminDashboardStats.ticketsByStatus.info_needed },
-  { name: 'En traitement', value: adminDashboardStats.ticketsByStatus.processing },
-  { name: 'Escaladé RH', value: adminDashboardStats.ticketsByStatus.hr_escalated },
-  { name: 'Attente RH', value: adminDashboardStats.ticketsByStatus.hr_pending },
-  { name: 'Résolu', value: adminDashboardStats.ticketsByStatus.resolved },
-  { name: 'Clôturé', value: adminDashboardStats.ticketsByStatus.closed },
-];
+const MONTH_LABELS: Record<number, string> = {
+  1: 'Jan', 2: 'Fév', 3: 'Mar', 4: 'Avr', 5: 'Mai', 6: 'Juin',
+  7: 'Juil', 8: 'Août', 9: 'Sept', 10: 'Oct', 11: 'Nov', 12: 'Déc',
+};
+const WEEKDAY_LABELS = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
 
-const ticketsByCompany = adminDashboardStats.ticketsByCompany.map((item, index) => ({
-  ...item,
-  color: ['hsl(220, 70%, 50%)', 'hsl(160, 60%, 45%)', 'hsl(30, 80%, 55%)', 'hsl(280, 60%, 50%)'][index],
-}));
-
-// Monthly trend data (mock)
-const monthlyTrend = [
-  { month: 'Sept', nouveaux: 28, resolus: 22, enCours: 18 },
-  { month: 'Oct', nouveaux: 35, resolus: 30, enCours: 23 },
-  { month: 'Nov', nouveaux: 42, resolus: 38, enCours: 27 },
-  { month: 'Déc', nouveaux: 38, resolus: 35, enCours: 30 },
-  { month: 'Jan', nouveaux: 45, resolus: 40, enCours: 35 },
-];
-
-// Weekly distribution (mock)
-const weeklyDistribution = [
-  { jour: 'Lun', tickets: 12 },
-  { jour: 'Mar', tickets: 18 },
-  { jour: 'Mer', tickets: 15 },
-  { jour: 'Jeu', tickets: 22 },
-  { jour: 'Ven', tickets: 25 },
-  { jour: 'Sam', tickets: 5 },
-  { jour: 'Dim', tickets: 3 },
-];
-
-// Resolution time by type (mock)
-const resolutionTime = [
-  { type: 'Rémunération', jours: 5.2 },
-  { type: 'Carrière', jours: 8.5 },
-  { type: 'Sanction', jours: 12.3 },
-  { type: 'Licenciement', jours: 15.7 },
-  { type: 'Recrutement', jours: 6.8 },
-  { type: 'Autre', jours: 4.1 },
-];
-
-const COLORS = ['hsl(220, 70%, 50%)', 'hsl(160, 60%, 45%)', 'hsl(30, 80%, 55%)', 'hsl(280, 60%, 50%)', 'hsl(340, 70%, 50%)', 'hsl(200, 60%, 50%)', 'hsl(100, 50%, 45%)'];
+function filterByPeriod(requetes: RequeteListDto[], period: string, dateKey: 'created_at' | 'updated_at'): RequeteListDto[] {
+  const now = new Date();
+  let start = new Date(now);
+  if (period === 'week') {
+    const day = now.getDay();
+    start.setDate(now.getDate() - day);
+    start.setHours(0, 0, 0, 0);
+  } else if (period === 'month') {
+    start.setDate(1);
+    start.setHours(0, 0, 0, 0);
+  } else if (period === 'quarter') {
+    const q = Math.floor(now.getMonth() / 3) + 1;
+    start.setMonth((q - 1) * 3, 1);
+    start.setHours(0, 0, 0, 0);
+  } else if (period === 'year') {
+    start.setMonth(0, 1);
+    start.setHours(0, 0, 0, 0);
+  } else {
+    return requetes;
+  }
+  return requetes.filter((r) => {
+    const raw = dateKey === 'created_at' ? r.created_at : r.updated_at;
+    const d = raw ? new Date(raw) : new Date(r.updated_at);
+    return d >= start;
+  });
+}
 
 export default function Reports() {
   const [period, setPeriod] = useState('month');
   const [selectedCompany, setSelectedCompany] = useState('all');
+  const [requetes, setRequetes] = useState<RequeteListDto[]>([]);
+  const [entreprises, setEntreprises] = useState<EntrepriseDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const totalTickets = ticketsByUrgency.reduce((sum, item) => sum + item.value, 0);
-  const avgResolutionTime = (resolutionTime.reduce((sum, item) => sum + item.jours, 0) / resolutionTime.length).toFixed(1);
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [resReq, resEnt] = await Promise.all([
+        getRequetes({ page_size: 500 }),
+        getEntreprises(),
+      ]);
+      setRequetes(resReq.results ?? []);
+      setEntreprises(Array.isArray(resEnt) ? resEnt : []);
+    } catch {
+      setError('Impossible de charger les données.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const filteredRequetes = useMemo(() => {
+    let list = filterByPeriod(requetes, period, 'updated_at');
+    if (selectedCompany !== 'all') {
+      list = list.filter((r) => String(r.entreprise?.id) === selectedCompany);
+    }
+    return list;
+  }, [requetes, period, selectedCompany]);
+
+  const ticketsInProgress = useMemo(
+    () => filteredRequetes.filter((r) => !STATUT_CLOSED.includes(r.statut)).length,
+    [filteredRequetes]
+  );
+  const ticketsClosed = useMemo(
+    () => filteredRequetes.filter((r) => STATUT_CLOSED.includes(r.statut)).length,
+    [filteredRequetes]
+  );
+
+  const ticketsByUrgency = useMemo(() => {
+    const counts = { low: 0, medium: 0, high: 0, critical: 0 };
+    filteredRequetes.forEach((r) => {
+      const p = (r.priorite || 'medium') as keyof typeof counts;
+      if (p in counts) counts[p]++;
+      else counts.medium++;
+    });
+    return [
+      { name: 'Faible', value: counts.low, color: 'hsl(var(--urgency-low))' },
+      { name: 'Moyenne', value: counts.medium, color: 'hsl(var(--urgency-medium))' },
+      { name: 'Élevée', value: counts.high, color: 'hsl(var(--urgency-high))' },
+      { name: 'Critique', value: counts.critical, color: 'hsl(var(--urgency-critical))' },
+    ];
+  }, [filteredRequetes]);
+
+  const ticketsByStatus = useMemo(() => {
+    const counts: Record<string, number> = {};
+    STATUS_KEYS.forEach((k) => { counts[k] = 0; });
+    filteredRequetes.forEach((r) => {
+      const s = (r.statut || 'new') as string;
+      if (s in counts) counts[s]++;
+      else counts.new++;
+    });
+    return STATUS_KEYS.map((k) => ({
+      name: statusLabels[k] ?? k,
+      value: counts[k] ?? 0,
+    }));
+  }, [filteredRequetes]);
+
+  const ticketsByCompany = useMemo(() => {
+    const byName: Record<string, number> = {};
+    filteredRequetes.forEach((r) => {
+      const name = r.entreprise?.nom ?? '—';
+      byName[name] = (byName[name] ?? 0) + 1;
+    });
+    const arr = Object.entries(byName).map(([company, count]) => ({ company, count }));
+    arr.sort((a, b) => b.count - a.count);
+    return arr.map((item, index) => ({
+      ...item,
+      color: COLORS[index % COLORS.length],
+    }));
+  }, [filteredRequetes]);
+
+  const monthlyTrend = useMemo(() => {
+    const byMonth: Record<number, { nouveaux: number; resolus: number; enCours: number }> = {};
+    for (let m = 1; m <= 12; m++) byMonth[m] = { nouveaux: 0, resolus: 0, enCours: 0 };
+    requetes.forEach((r) => {
+      const raw = r.created_at ?? r.updated_at;
+      const d = new Date(raw);
+      const m = d.getMonth() + 1;
+      if (!byMonth[m]) byMonth[m] = { nouveaux: 0, resolus: 0, enCours: 0 };
+      byMonth[m].nouveaux++;
+      if (STATUT_CLOSED.includes(r.statut)) byMonth[m].resolus++;
+      else byMonth[m].enCours++;
+    });
+    const now = new Date();
+    const last5 = Array.from({ length: 5 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (4 - i), 1);
+      const monthNum = d.getMonth() + 1;
+      const data = byMonth[monthNum] ?? { nouveaux: 0, resolus: 0, enCours: 0 };
+      return { month: MONTH_LABELS[monthNum] ?? String(monthNum), ...data };
+    });
+    return last5;
+  }, [requetes]);
+
+  const weeklyDistribution = useMemo(() => {
+    const byDay = [0, 0, 0, 0, 0, 0, 0];
+    requetes.forEach((r) => {
+      const raw = r.created_at ?? r.updated_at;
+      const d = new Date(raw);
+      byDay[d.getDay()]++;
+    });
+    return WEEKDAY_LABELS.map((jour, i) => ({ jour, tickets: byDay[i] }));
+  }, [requetes]);
+
+  const topByType = useMemo(() => {
+    const byType: Record<string, number> = {};
+    filteredRequetes.forEach((r) => {
+      const t = r.type_probleme || 'other';
+      byType[t] = (byType[t] ?? 0) + 1;
+    });
+    return Object.entries(byType)
+      .map(([type, count]) => ({ type: ticketTypeLabels[type] ?? type, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 6);
+  }, [filteredRequetes]);
+
+  const resolutionTime = useMemo(() => {
+    const byType: Record<string, number[]> = {};
+    filteredRequetes.filter((r) => STATUT_CLOSED.includes(r.statut)).forEach((r) => {
+      const t = r.type_probleme || 'other';
+      if (!byType[t]) byType[t] = [];
+      const created = r.created_at ? new Date(r.created_at) : new Date(r.updated_at);
+      const updated = new Date(r.updated_at);
+      const days = Math.max(0, (updated.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
+      byType[t].push(days);
+    });
+    return Object.entries(byType)
+      .map(([type, days]) => ({
+        type: ticketTypeLabels[type] ?? type,
+        jours: days.length ? Math.round((days.reduce((a, b) => a + b, 0) / days.length) * 10) / 10 : 0,
+      }))
+      .filter((x) => x.jours > 0)
+      .sort((a, b) => b.jours - a.jours)
+      .slice(0, 6);
+  }, [filteredRequetes]);
+
+  const totalTickets = filteredRequetes.length;
+  const avgResolutionTime =
+    resolutionTime.length > 0
+      ? (resolutionTime.reduce((s, x) => s + x.jours, 0) / resolutionTime.length).toFixed(1)
+      : '—';
+  const resolutionRate = totalTickets > 0 ? Math.round((ticketsClosed / totalTickets) * 100) : 0;
+  const companiesForSelect = useMemo(
+    () => entreprises.map((e) => ({ id: String(e.id), name: e.nom })),
+    [entreprises]
+  );
 
   return (
     <div className="space-y-6">
@@ -133,7 +272,7 @@ export default function Reports() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Toutes compagnies</SelectItem>
-              {companies.map(company => (
+              {companiesForSelect.map((company) => (
                 <SelectItem key={company.id} value={company.id}>
                   {company.name}
                 </SelectItem>
@@ -143,6 +282,20 @@ export default function Reports() {
         </div>
       </div>
 
+      {error && (
+        <div className="rounded-xl border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="rounded-xl border p-6 h-28 animate-pulse bg-muted/30" />
+          ))}
+        </div>
+      ) : (
+      <>
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
@@ -168,9 +321,9 @@ export default function Reports() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">En cours</p>
-                <p className="text-3xl font-bold text-foreground">{adminDashboardStats.ticketsInProgress}</p>
+                <p className="text-3xl font-bold text-foreground">{ticketsInProgress}</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {Math.round((adminDashboardStats.ticketsInProgress / totalTickets) * 100)}% du total
+                  {totalTickets > 0 ? Math.round((ticketsInProgress / totalTickets) * 100) : 0}% du total
                 </p>
               </div>
               <div className="w-12 h-12 bg-amber-500/10 rounded-full flex items-center justify-center">
@@ -185,10 +338,10 @@ export default function Reports() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Résolus</p>
-                <p className="text-3xl font-bold text-foreground">{adminDashboardStats.ticketsClosed}</p>
+                <p className="text-3xl font-bold text-foreground">{ticketsClosed}</p>
                 <p className="text-xs text-green-600 flex items-center gap-1 mt-1">
                   <CheckCircle2 className="w-3 h-3" />
-                  Taux: 74%
+                  Taux: {resolutionRate}%
                 </p>
               </div>
               <div className="w-12 h-12 bg-green-500/10 rounded-full flex items-center justify-center">
@@ -449,23 +602,29 @@ export default function Reports() {
             <Card>
               <CardHeader>
                 <CardTitle>Temps de Résolution par Type</CardTitle>
-                <CardDescription>Durée moyenne en jours par catégorie</CardDescription>
+                <CardDescription>Durée moyenne en jours (requêtes clôturées)</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={resolutionTime} layout="vertical">
-                      <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
-                      <XAxis type="number" unit="j" />
-                      <YAxis dataKey="type" type="category" width={100} tick={{ fontSize: 12 }} />
-                      <Tooltip formatter={(value) => [`${value} jours`, 'Durée moyenne']} />
-                      <Bar dataKey="jours" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]}>
-                        {resolutionTime.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+                  {resolutionTime.length === 0 ? (
+                    <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+                      Aucune requête clôturée pour calculer le délai.
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={resolutionTime} layout="vertical">
+                        <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
+                        <XAxis type="number" unit="j" />
+                        <YAxis dataKey="type" type="category" width={100} tick={{ fontSize: 12 }} />
+                        <Tooltip formatter={(value) => [`${value} jours`, 'Durée moyenne']} />
+                        <Bar dataKey="jours" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]}>
+                          {resolutionTime.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -480,10 +639,10 @@ export default function Reports() {
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Taux de résolution</span>
-                    <span className="text-lg font-semibold text-green-600">74%</span>
+                    <span className="text-lg font-semibold text-green-600">{resolutionRate}%</span>
                   </div>
                   <div className="h-2 bg-muted rounded-full overflow-hidden">
-                    <div className="h-full bg-green-500 rounded-full" style={{ width: '74%' }} />
+                    <div className="h-full bg-green-500 rounded-full" style={{ width: `${resolutionRate}%` }} />
                   </div>
                 </div>
 
@@ -527,42 +686,31 @@ export default function Reports() {
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {[
-                    { type: 'Rémunération / Primes', count: 42, trend: '+15%', trendUp: true },
-                    { type: 'Sanctions', count: 28, trend: '+8%', trendUp: true },
-                    { type: 'Carrière / Formation', count: 24, trend: '-5%', trendUp: false },
-                    { type: 'Licenciement', count: 18, trend: '+22%', trendUp: true },
-                    { type: 'Recrutement', count: 15, trend: '0%', trendUp: null },
-                    { type: 'Autres', count: 12, trend: '-10%', trendUp: false },
-                  ].map((item, index) => (
-                    <div 
-                      key={item.type}
-                      className="p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <p className="font-medium text-foreground">{item.type}</p>
-                          <p className="text-2xl font-bold text-primary mt-1">{item.count}</p>
+                  {topByType.length === 0 ? (
+                    <p className="text-sm text-muted-foreground col-span-3">Aucune requête pour la période sélectionnée.</p>
+                  ) : (
+                    topByType.map((item) => (
+                      <div
+                        key={item.type}
+                        className="p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className="font-medium text-foreground">{item.type}</p>
+                            <p className="text-2xl font-bold text-primary mt-1">{item.count}</p>
+                          </div>
                         </div>
-                        <Badge 
-                          variant="outline" 
-                          className={
-                            item.trendUp === true ? 'text-red-600 border-red-200' :
-                            item.trendUp === false ? 'text-green-600 border-green-200' :
-                            'text-muted-foreground'
-                          }
-                        >
-                          {item.trend}
-                        </Badge>
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </CardContent>
             </Card>
           </div>
         </TabsContent>
       </Tabs>
+      </>
+      )}
     </div>
   );
 }

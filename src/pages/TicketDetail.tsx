@@ -49,15 +49,17 @@ import {
 import { Input } from '@/components/ui/input';
 import { Zap } from 'lucide-react';
 
-const statusSteps: TicketStatus[] = [
+// Étapes de progression : 5 étapes de traitement + 1 étape de clôture (résolu OU non résolu, pas les deux)
+const progressionStepKeys: TicketStatus[] = [
   'new',
   'info_needed',
   'processing',
   'hr_escalated',
   'hr_pending',
-  'resolved',
-  'closed',
 ];
+const CLOTURE_STATUSES: TicketStatus[] = ['resolved', 'non_resolu', 'closed'];
+// Liste complète des statuts pour le sélecteur de changement de statut (API / Activity Tracker)
+const allStatusesForChange: TicketStatus[] = [...progressionStepKeys, 'resolved', 'non_resolu', 'closed'];
 
 const ticketTypes = Object.entries(ticketTypeLabels) as [TicketType, string][];
 const urgencyLevels = Object.entries(urgencyLabels) as [TicketUrgency, string][];
@@ -329,15 +331,16 @@ export default function TicketDetail() {
     };
   }, [selectedAction?.id, ticket?.id]);
 
-  // Charger la maquette par défaut quand la requête est clôturée
+  // Charger la maquette par défaut quand la requête est clôturée (résolu, non résolu ou closed)
+  const isCloture = ticket && ['resolved', 'non_resolu', 'closed'].includes(ticket.status);
   useEffect(() => {
-    if (ticket?.status !== 'closed') {
+    if (!isCloture) {
       setMaquetteDefault(null);
       return;
     }
     setCompteRenduForm({
-      dateCloture: ticket.dateCloture ?? '',
-      compteRendu: ticket.compteRendu ?? '',
+      dateCloture: ticket?.dateCloture ?? '',
+      compteRendu: ticket?.compteRendu ?? '',
     });
     apiRequest<ApiMaquetteCompteRendu[] | { results: ApiMaquetteCompteRendu[] }>(
       '/maquettes-compte-rendu/?is_default=true'
@@ -347,7 +350,7 @@ export default function TicketDetail() {
         setMaquetteDefault(list[0] ?? null);
       })
       .catch(() => setMaquetteDefault(null));
-  }, [ticket?.status, ticket?.dateCloture, ticket?.compteRendu]);
+  }, [isCloture, ticket?.status, ticket?.dateCloture, ticket?.compteRendu]);
 
   // Check if ticket needs classification (no type or urgency)
   const needsClassification = ticket && (!ticket.type || !ticket.urgency);
@@ -371,7 +374,25 @@ export default function TicketDetail() {
     );
   }
 
-  const currentStatusIndex = statusSteps.indexOf(ticket.status);
+  const currentStatusIndex = (() => {
+    const i = progressionStepKeys.indexOf(ticket.status);
+    if (i >= 0) return i;
+    if (CLOTURE_STATUSES.includes(ticket.status)) return progressionStepKeys.length; // dernière étape = clôture
+    return progressionStepKeys.length;
+  })();
+  const lastStepLabel =
+    ticket.status === 'resolved'
+      ? 'Résolu et clôture'
+      : ticket.status === 'non_resolu'
+        ? 'Non résolu et clôture'
+        : ticket.status === 'closed'
+          ? 'Clôturé'
+          : 'Clôture (résolu / non résolu)';
+  const progressionLabels = [
+    ...progressionStepKeys.map((k) => statusLabels[k] ?? k),
+    lastStepLabel,
+  ];
+  const totalSteps = progressionLabels.length;
 
   const handleSendMessage = async () => {
     const text = newMessage.trim();
@@ -680,18 +701,22 @@ export default function TicketDetail() {
               <h3 className="text-sm font-semibold mb-4">Progression du dossier</h3>
               <div className="relative">
                 <div className="flex justify-between">
-                  {statusSteps.map((status, index) => {
+                  {progressionLabels.map((label, index) => {
                     const isCompleted = index <= currentStatusIndex;
                     const isCurrent = index === currentStatusIndex;
+                    const isClotureStep = index === totalSteps - 1;
+                    const isNonResolu = isClotureStep && ticket.status === 'non_resolu';
                     return (
-                      <div key={status} className="flex flex-col items-center flex-1">
+                      <div key={index} className="flex flex-col items-center flex-1">
                         <div
                           className={cn(
                             'w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium z-10',
                             isCompleted
-                              ? 'bg-status-resolved text-status-resolved-foreground'
+                              ? isNonResolu
+                                ? 'bg-status-non-resolu text-status-non-resolu-foreground'
+                                : 'bg-status-resolved text-status-resolved-foreground'
                               : 'bg-muted text-muted-foreground',
-                            isCurrent && 'ring-4 ring-status-resolved/20'
+                            isCurrent && (isNonResolu ? 'ring-4 ring-status-non-resolu/20' : 'ring-4 ring-status-resolved/20')
                           )}
                         >
                           {isCompleted ? (
@@ -706,7 +731,7 @@ export default function TicketDetail() {
                             isCompleted ? 'text-foreground font-medium' : 'text-muted-foreground'
                           )}
                         >
-                          {statusLabels[status]}
+                          {label}
                         </span>
                       </div>
                     );
@@ -715,9 +740,14 @@ export default function TicketDetail() {
                 {/* Progress line */}
                 <div className="absolute top-4 left-0 right-0 h-0.5 bg-muted -z-0">
                   <div
-                    className="h-full bg-status-resolved transition-all duration-500"
+                    className={cn(
+                      'h-full transition-all duration-500',
+                      ticket.status === 'non_resolu' && currentStatusIndex >= totalSteps - 1
+                        ? 'bg-status-non-resolu'
+                        : 'bg-status-resolved'
+                    )}
                     style={{
-                      width: `${(currentStatusIndex / (statusSteps.length - 1)) * 100}%`,
+                      width: `${(currentStatusIndex / (totalSteps - 1)) * 100}%`,
                     }}
                   />
                 </div>
@@ -765,12 +795,13 @@ export default function TicketDetail() {
 
           {/* Activity Tracker - Only for delegates and pole managers */}
           {canClassify && (
-            <ActivityTracker 
-              ticketId={ticket.id} 
+            <ActivityTracker
+              ticketId={ticket.id}
+              poleId={ticket.poleId}
               ticketReference={ticket.reference}
               ticketSubject={ticket.subject}
               recipientName={ticket.requesterName ?? ''}
-              canManage={canClassify} 
+              canManage={canClassify}
             />
           )}
 
@@ -863,8 +894,8 @@ export default function TicketDetail() {
             </div>
           </div>
 
-          {/* Compte rendu de clôture - visible quand la requête est clôturée */}
-          {ticket.status === 'closed' && (
+          {/* Compte rendu de clôture - visible quand la requête est clôturée (résolu, non résolu ou closed) */}
+          {isCloture && (
             <div className="bg-card rounded-xl border shadow-card overflow-hidden">
               <div className="p-4 border-b border-border flex items-center gap-2">
                 <FileText className="w-5 h-5 text-muted-foreground" />
@@ -1096,7 +1127,7 @@ export default function TicketDetail() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {(allowedTransitions.length > 0 ? allowedTransitions : statusSteps).map((s) => (
+                  {(allowedTransitions.length > 0 ? allowedTransitions : allStatusesForChange).map((s) => (
                     <SelectItem key={s} value={s}>
                       {statusLabels[s as TicketStatus] ?? s}
                     </SelectItem>

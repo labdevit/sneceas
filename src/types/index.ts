@@ -58,6 +58,7 @@ export type TicketStatus =
   | 'hr_escalated' 
   | 'hr_pending' 
   | 'resolved' 
+  | 'non_resolu'
   | 'closed';
 
 // Ticket types

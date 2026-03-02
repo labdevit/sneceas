@@ -46,6 +46,10 @@ const statusConfig: Record<TicketStatus, {
     class: 'badge-status-resolved', 
     icon: CheckCircle2 
   },
+  non_resolu: { 
+    class: 'badge-status-non-resolu', 
+    icon: XCircle 
+  },
   closed: { 
     class: 'badge-status-closed', 
     icon: XCircle 

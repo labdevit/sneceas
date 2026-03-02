@@ -69,6 +69,8 @@
     --status-hr-escalated-foreground: 0 0% 100%;
     --status-resolved: 152 65% 34%;
     --status-resolved-foreground: 0 0% 100%;
+    --status-non-resolu: 25 95% 44%;
+    --status-non-resolu-foreground: 0 0% 100%;
     --status-closed: 215 20% 40%;
     --status-closed-foreground: 0 0% 100%;
 
@@ -167,6 +169,9 @@
   }
   .badge-status-resolved {
     @apply bg-[hsl(var(--status-resolved))] text-[hsl(var(--status-resolved-foreground))];
+  }
+  .badge-status-non-resolu {
+    @apply bg-[hsl(var(--status-non-resolu))] text-[hsl(var(--status-non-resolu-foreground))];
   }
   .badge-status-closed {
     @apply bg-[hsl(var(--status-closed))] text-[hsl(var(--status-closed-foreground))];

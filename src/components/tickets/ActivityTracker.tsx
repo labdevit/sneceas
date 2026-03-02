@@ -41,9 +41,11 @@ import {
   createRequeteActivite,
   updateRequeteActivite,
   getRequeteActivityTypeChoices,
+  getActivitesDisponibles,
   getMediaUrl,
   type RequeteActivityTypeChoicesDto,
   type ActivityTypeChoice,
+  type ActiviteTemplateDto,
 } from '@/lib/api';
 
 export type ActivityType = string; // dynamique selon le pôle (call, meeting, note, ou types métier)
@@ -88,6 +90,30 @@ function getActivityTypeIcon(type: string): React.ReactNode {
   return iconMap[type] ?? <FileText className="w-4 h-4" />;
 }
 
+/** Affiche les champs personnalisés (extra_data) du modèle d'activité dynamique. */
+function ActivityExtraData({ extraData }: { extraData?: Record<string, unknown> }) {
+  if (!extraData || typeof extraData !== 'object' || Object.keys(extraData).length === 0) {
+    return null;
+  }
+  const entries = Object.entries(extraData).filter(
+    ([_, v]) => v !== undefined && v !== null && String(v).trim() !== ''
+  );
+  if (entries.length === 0) return null;
+  return (
+    <div className="mt-2 p-2 rounded bg-muted/50 border border-border/50">
+      <p className="text-xs font-medium text-muted-foreground mb-1.5">Champs du modèle</p>
+      <dl className="space-y-1 text-sm">
+        {entries.map(([key, value]) => (
+          <div key={key} className="flex gap-2">
+            <dt className="text-muted-foreground shrink-0">{key}:</dt>
+            <dd className="break-words">{String(value)}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
 const statusLabels: Record<ActivityStatus, string> = {
   planned: 'Planifié',
   completed: 'Terminé',
@@ -98,6 +124,8 @@ const INITIAL_ACTIVITIES: Activity[] = [];
 
 interface ActivityTrackerProps {
   ticketId: string;
+  /** Id du pôle de la requête (pour charger les modèles d'activité dynamiques). */
+  poleId?: string;
   ticketReference?: string;
   ticketSubject?: string;
   recipientEmail?: string;
@@ -118,19 +146,46 @@ export type HistoriqueEntry = {
   timestamp: string;
 };
 
-export function ActivityTracker({ 
-  ticketId, 
-  ticketReference = 'REQ-XXXX', 
+/** Fusion des types legacy et des modèles dynamiques pour la liste affichée.
+ * - On retire tout type legacy qui a le même code qu'un template (ex. "call").
+ * - On retire aussi tout type legacy qui a le même libellé qu'un template (évite deux "test model").
+ * - Les champs affichés dans le modal viennent UNIQUEMENT du template (activiteTemplates), jamais de la liste fusionnée.
+ */
+function mergeActivityTypes(
+  legacy: RequeteActivityTypeChoicesDto | null,
+  templates: ActiviteTemplateDto[]
+): ActivityTypeChoice[] {
+  const legacyList = legacy?.types ?? [];
+  const templateChoices: ActivityTypeChoice[] = templates.map((t) => ({
+    value: `tpl:${t.id}`,
+    label: t.nom,
+    fields: [], // Ne jamais utiliser ceci dans le modal : les champs viennent de activiteTemplates
+  }));
+  const templateCodes = new Set(templates.map((t) => (t.code ?? '').toLowerCase()));
+  const templateLabels = new Set(templates.map((t) => t.nom?.trim() ?? ''));
+  const legacyFiltered = legacyList.filter((leg) => {
+    if (templateCodes.has((leg.value ?? '').toLowerCase())) return false;
+    if (templateLabels.has((leg.label ?? '').trim())) return false;
+    return true;
+  });
+  return [...legacyFiltered, ...templateChoices];
+}
+
+export function ActivityTracker({
+  ticketId,
+  poleId,
+  ticketReference = 'REQ-XXXX',
   ticketSubject = '',
   recipientEmail,
   recipientName,
-  canManage 
+  canManage,
 }: ActivityTrackerProps) {
   const { toast } = useToast();
   const [historique, setHistorique] = useState<HistoriqueEntry[]>([]);
   const [historiqueLoading, setHistoriqueLoading] = useState(true);
   const [activities, setActivities] = useState<Activity[]>(INITIAL_ACTIVITIES);
   const [activityTypeChoices, setActivityTypeChoices] = useState<RequeteActivityTypeChoicesDto | null>(null);
+  const [activiteTemplates, setActiviteTemplates] = useState<ActiviteTemplateDto[]>([]);
   const [activityTypeChoicesLoading, setActivityTypeChoicesLoading] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
@@ -156,23 +211,28 @@ export function ActivityTracker({
     return () => { cancelled = true; };
   }, [ticketId]);
 
-  // Charger les types d'activité selon le pôle (pour le formulaire « Ajouter une activité »)
+  // Charger les types d'activité (legacy + modèles dynamiques selon le pôle)
   useEffect(() => {
     if (!ticketId) return;
     let cancelled = false;
     setActivityTypeChoicesLoading(true);
-    getRequeteActivityTypeChoices(ticketId)
-      .then((data) => {
-        if (!cancelled) setActivityTypeChoices(data);
-      })
-      .catch(() => {
-        if (!cancelled) setActivityTypeChoices(null);
+    Promise.all([
+      getRequeteActivityTypeChoices(ticketId).catch(() => null),
+      poleId ? getActivitesDisponibles(Number(poleId)).catch(() => []) : Promise.resolve([] as ActiviteTemplateDto[]),
+    ])
+      .then(([legacy, templates]) => {
+        if (!cancelled) {
+          setActivityTypeChoices(legacy ?? null);
+          setActiviteTemplates(Array.isArray(templates) ? templates : []);
+        }
       })
       .finally(() => {
         if (!cancelled) setActivityTypeChoicesLoading(false);
       });
-    return () => { cancelled = true; };
-  }, [ticketId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [ticketId, poleId]);
 
   // Charger les activités planifiées depuis l'API (affichées dans le calendrier)
   useEffect(() => {
@@ -209,7 +269,7 @@ export function ActivityTracker({
     return () => { cancelled = true; };
   }, [ticketId]);
 
-  const typesList: ActivityTypeChoice[] = activityTypeChoices?.types ?? [];
+  const typesList: ActivityTypeChoice[] = mergeActivityTypes(activityTypeChoices, activiteTemplates);
   const firstTypeValue = typesList.length > 0 ? typesList[0].value : 'call';
 
   // New activity form state (type, titre, description, date, champs dynamiques extra_data)
@@ -263,6 +323,40 @@ export function ActivityTracker({
 
   const selectedTypeDef = typesList.find((t) => t.value === newActivity.type);
 
+  /** Pour un type template (tpl:xx), récupérer les champs depuis le template API uniquement, pas depuis la liste fusionnée. */
+  const selectedTemplate = activiteTemplates.find(
+    (t) => newActivity.type === `tpl:${t.id}`
+  );
+  const customFieldsForDisplay =
+    selectedTemplate?.champs
+      ?.filter((c) => c.is_active !== false)
+      .map((c) => ({
+        name: c.nom,
+        label: c.label,
+        type: (c.type_champ === 'datetime' ? 'datetime' : c.type_champ === 'textarea' ? 'textarea' : c.type_champ === 'number' ? 'number' : c.type_champ === 'date' ? 'date' : 'text') as ActivityTypeChoice['fields'][0]['type'],
+        required: c.required ?? false,
+      })) ?? [];
+
+  /** Ne garder dans extra_data que les clés des champs du type actuellement sélectionné. */
+  const setExtraDataForCurrentType = (fieldName: string, value: string) => {
+    setNewActivity((prev) => {
+      let validKeys: Set<string>;
+      if (prev.type.startsWith('tpl:')) {
+        const template = activiteTemplates.find((t) => prev.type === `tpl:${t.id}`);
+        validKeys = new Set(template?.champs?.filter((c) => c.is_active !== false).map((c) => c.nom) ?? []);
+      } else {
+        const typeDef = typesList.find((t) => t.value === prev.type);
+        validKeys = new Set(typeDef?.fields?.map((f) => f.name) ?? []);
+      }
+      const nextExtra = { ...prev.extra_data, [fieldName]: value };
+      const filtered: Record<string, string> = {};
+      for (const k of Object.keys(nextExtra)) {
+        if (validKeys.has(k)) filtered[k] = nextExtra[k];
+      }
+      return { ...prev, extra_data: filtered };
+    });
+  };
+
   const handleAddActivity = async () => {
     if (!newActivity.title || !newActivity.scheduledDate || !ticketId) {
       toast({
@@ -275,20 +369,42 @@ export function ActivityTracker({
 
     setIsSendingNotification(true);
     try {
+      if (!selectedTypeDef) {
+        toast({ title: 'Erreur', description: 'Veuillez sélectionner un type d\'activité.', variant: 'destructive' });
+        return;
+      }
       const extraDataPayload: Record<string, unknown> = {};
-      if (selectedTypeDef?.fields?.length && newActivity.extra_data) {
-        selectedTypeDef.fields.forEach((f) => {
-          const v = newActivity.extra_data[f.name];
-          if (v !== undefined && v !== '') extraDataPayload[f.name] = v;
+      const fieldsToSend = newActivity.type.startsWith('tpl:')
+        ? customFieldsForDisplay
+        : (selectedTypeDef?.fields ?? []);
+      if (fieldsToSend.length > 0) {
+        fieldsToSend.forEach((f) => {
+          const v = newActivity.extra_data?.[f.name];
+          if (f.required) {
+            extraDataPayload[f.name] = v !== undefined && v !== '' ? v : '';
+          } else if (v !== undefined && v !== '') {
+            extraDataPayload[f.name] = v;
+          }
         });
       }
-      const created = await createRequeteActivite(ticketId, {
-        type_activite: newActivity.type,
-        titre: newActivity.title,
-        description: newActivity.description || '',
+      const isTemplate = selectedTypeDef.value.startsWith('tpl:');
+      const activiteTemplateId = isTemplate
+        ? parseInt(selectedTypeDef.value.replace('tpl:', ''), 10)
+        : undefined;
+      const payload: Parameters<typeof createRequeteActivite>[1] = {
+        titre: newActivity.title.trim(),
+        description: (newActivity.description ?? '').trim(),
         date_planifiee: new Date(newActivity.scheduledDate).toISOString(),
-        extra_data: Object.keys(extraDataPayload).length > 0 ? extraDataPayload : undefined,
-      });
+      };
+      if (activiteTemplateId != null && !Number.isNaN(activiteTemplateId)) {
+        payload.activite_template_id = activiteTemplateId;
+      } else {
+        payload.type_activite = selectedTypeDef.value;
+      }
+      if (Object.keys(extraDataPayload).length > 0) {
+        payload.extra_data = extraDataPayload;
+      }
+      const created = await createRequeteActivite(ticketId, payload);
       const activity: Activity = {
         id: String(created.id),
         type: created.type_activite,
@@ -324,9 +440,26 @@ export function ActivityTracker({
         description: "L'activité a été planifiée. Elle s'affichera dans le calendrier.",
       });
     } catch (err) {
+      const status = (err as { status?: number })?.status;
+      const data = (err as { data?: Record<string, unknown> })?.data;
+      let message: string;
+      if (status === 404) {
+        message = "Requête introuvable ou vous n'avez pas accès à cette requête.";
+      } else if (status === 400 && data && typeof data === 'object') {
+        if (typeof data.detail === 'string') message = data.detail;
+        else {
+          const firstKey = Object.keys(data)[0];
+          const val = firstKey ? (data[firstKey] as unknown) : undefined;
+          if (Array.isArray(val) && val[0]) message = String(val[0]);
+          else if (typeof val === 'string') message = val;
+          else message = "Données invalides. Vérifiez le type d'activité et les champs.";
+        }
+      } else {
+        message = typeof data?.detail === 'string' ? data.detail : "Impossible d'ajouter l'activité.";
+      }
       toast({
         title: 'Erreur',
-        description: (err as { data?: { detail?: string } })?.data?.detail ?? "Impossible d'ajouter l'activité.",
+        description: message,
         variant: 'destructive',
       });
     } finally {
@@ -424,7 +557,25 @@ export function ActivityTracker({
         </div>
         
         {canManage && (
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <Dialog
+            open={isDialogOpen}
+            onOpenChange={(open) => {
+              setIsDialogOpen(open);
+              if (open) {
+                const first = typesList.length > 0 ? typesList[0].value : 'call';
+                const nextDate = new Date();
+                nextDate.setMinutes(0, 0, 0);
+                nextDate.setHours(nextDate.getHours() + 1);
+                setNewActivity({
+                  type: first,
+                  title: '',
+                  description: '',
+                  scheduledDate: nextDate.toISOString().slice(0, 16),
+                  extra_data: {},
+                });
+              }
+            }}
+          >
             <DialogTrigger asChild>
               <Button size="sm">
                 <Plus className="w-4 h-4 mr-1" />
@@ -446,7 +597,7 @@ export function ActivityTracker({
               <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
                 <div className="space-y-4 mt-2">
                 <div>
-                  <Label className="mb-2 block">Type d'activité</Label>
+                  <Label className="mb-2 block">Type d&apos;activité</Label>
                   {activityTypeChoicesLoading ? (
                     <p className="text-sm text-muted-foreground">Chargement des types...</p>
                   ) : typesList.length === 0 ? (
@@ -454,9 +605,14 @@ export function ActivityTracker({
                   ) : (
                     <RadioGroup
                       value={newActivity.type}
-                      onValueChange={(value) =>
-                        setNewActivity({ ...newActivity, type: value, extra_data: {} })
-                      }
+                      onValueChange={(value) => {
+                        // Réinitialiser les champs personnalisés pour éviter de mélanger avec l'ancien type
+                        setNewActivity((prev) => ({
+                          ...prev,
+                          type: value,
+                          extra_data: {},
+                        }));
+                      }}
                       className="grid grid-cols-2 gap-2"
                     >
                       {typesList.map((choice) => (
@@ -485,45 +641,37 @@ export function ActivityTracker({
                   )}
                 </div>
 
-                {selectedTypeDef?.fields && selectedTypeDef.fields.length > 0 && (
-                  <div className="space-y-3 p-3 rounded-lg bg-muted/30 border border-border">
-                    <Label className="text-sm font-medium">Champs complémentaires (optionnels)</Label>
-                    {selectedTypeDef.fields.map((field) => (
-                      <div key={field.name}>
-                        <Label htmlFor={`extra-${field.name}`} className="text-xs">
+                {newActivity.type.startsWith('tpl:') && customFieldsForDisplay.length > 0 && (
+                  <div
+                    key={newActivity.type}
+                    className="space-y-3 p-3 rounded-lg bg-muted/30 border border-border"
+                  >
+                    <Label className="text-sm font-medium">
+                      Champs spécifiques à « {selectedTemplate?.nom ?? ''} »
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Uniquement les champs de ce modèle.
+                    </p>
+                    {customFieldsForDisplay.map((field) => (
+                      <div key={`${newActivity.type}-${field.name}`}>
+                        <Label htmlFor={`extra-${newActivity.type}-${field.name}`} className="text-xs">
                           {field.label}
                           {field.required ? ' *' : ''}
                         </Label>
                         {field.type === 'textarea' ? (
                           <Textarea
-                            id={`extra-${field.name}`}
+                            id={`extra-${newActivity.type}-${field.name}`}
                             value={newActivity.extra_data?.[field.name] ?? ''}
-                            onChange={(e) =>
-                              setNewActivity({
-                                ...newActivity,
-                                extra_data: {
-                                  ...newActivity.extra_data,
-                                  [field.name]: e.target.value,
-                                },
-                              })
-                            }
+                            onChange={(e) => setExtraDataForCurrentType(field.name, e.target.value)}
                             placeholder={field.label}
                             className="mt-1 min-h-[60px]"
                           />
                         ) : (
                           <Input
-                            id={`extra-${field.name}`}
+                            id={`extra-${newActivity.type}-${field.name}`}
                             type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'datetime' ? 'datetime-local' : 'text'}
                             value={newActivity.extra_data?.[field.name] ?? ''}
-                            onChange={(e) =>
-                              setNewActivity({
-                                ...newActivity,
-                                extra_data: {
-                                  ...newActivity.extra_data,
-                                  [field.name]: e.target.value,
-                                },
-                              })
-                            }
+                            onChange={(e) => setExtraDataForCurrentType(field.name, e.target.value)}
                             placeholder={field.label}
                             className="mt-1"
                           />
@@ -533,6 +681,11 @@ export function ActivityTracker({
                   </div>
                 )}
 
+                <Separator className="my-4" />
+                <div className="space-y-4">
+                  <Label className="text-sm font-medium text-muted-foreground">
+                    Détails de l&apos;activité (tous types)
+                  </Label>
                 <div>
                   <Label htmlFor="title">Titre *</Label>
                   <Input
@@ -564,6 +717,7 @@ export function ActivityTracker({
                     onChange={(e) => setNewActivity({ ...newActivity, scheduledDate: e.target.value })}
                     className="mt-1"
                   />
+                </div>
                 </div>
 
                 <div className="flex justify-end gap-2 pt-2 pb-2">
@@ -765,6 +919,7 @@ export function ActivityTracker({
                                 {activity.description}
                               </p>
                             )}
+                            <ActivityExtraData extraData={activity.extraData} />
                             <p className="text-xs text-muted-foreground mt-2">
                               📅 {new Date(activity.scheduledDate).toLocaleDateString('fr-FR', {
                                 day: 'numeric',
@@ -841,6 +996,7 @@ export function ActivityTracker({
                               <p className="text-sm">{activity.comment}</p>
                             </div>
                           )}
+                          <ActivityExtraData extraData={activity.extraData} />
                           {(activity.attachmentUrl || activity.attachmentName) && (
                             <a
                               href={activity.attachmentUrl}
@@ -887,6 +1043,7 @@ export function ActivityTracker({
                           <p className="text-xs text-muted-foreground">
                             {getActivityTypeLabel(activity.type, activity.typeDisplay)} - Annulé
                           </p>
+                          <ActivityExtraData extraData={activity.extraData} />
                         </div>
                       </div>
                     </div>

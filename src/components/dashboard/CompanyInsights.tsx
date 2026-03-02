@@ -34,15 +34,22 @@ import {
 } from '@/components/ui/select';
 import { StatsCard } from '@/components/dashboard/StatsCard';
 import {
-  companies,
+  companies as mockCompanies,
   statusLabels,
   ticketTypeLabels,
-  tickets,
+  tickets as mockTickets,
   urgencyLabels,
 } from '@/lib/mock-data';
-import type { TicketType } from '@/types';
+import type { Company, Ticket, TicketType } from '@/types';
 
 type PeriodFilter = 'all' | 'month' | 'quarter';
+
+export interface CompanyInsightsProps {
+  /** Requêtes mappées en tickets (données API). Si fourni, utilisé à la place du mock. */
+  tickets?: Ticket[];
+  /** Liste des entreprises (données API). Si fourni, utilisé à la place du mock. */
+  companies?: Company[];
+}
 
 const periodLabels: Record<PeriodFilter, string> = {
   all: 'Toutes périodes',
@@ -55,7 +62,10 @@ const isDismissalSignal = (subject: string, description: string) => {
   return haystack.includes('licenciement');
 };
 
-export function CompanyInsights() {
+export function CompanyInsights({ tickets: apiTickets, companies: apiCompanies }: CompanyInsightsProps = {}) {
+  const tickets = apiTickets ?? mockTickets;
+  const companies = apiCompanies ?? mockCompanies;
+
   const [period, setPeriod] = useState<PeriodFilter>('all');
   const [typeFilter, setTypeFilter] = useState<TicketType | 'all'>('all');
   const [heatmapDetail, setHeatmapDetail] = useState<{
@@ -81,7 +91,7 @@ export function CompanyInsights() {
     }
 
     return tickets.filter((ticket) => ticket.createdAt >= start);
-  }, [period]);
+  }, [period, tickets]);
 
   const scopedTickets = useMemo(() => {
     if (typeFilter === 'all') {

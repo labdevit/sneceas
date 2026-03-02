@@ -581,5 +581,6 @@ export const statusLabels: Record<string, string> = {
   hr_escalated: 'Escaladé RH',
   hr_pending: 'En attente RH',
   resolved: 'Résolu',
+  non_resolu: 'Non résolu',
   closed: 'Clôturé',
 };
