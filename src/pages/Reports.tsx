@@ -76,7 +76,7 @@ function filterByPeriod(requetes: RequeteListDto[], period: string, dateKey: 'cr
 }
 
 export default function Reports() {
-  const [period, setPeriod] = useState('month');
+  const [period, setPeriod] = useState('year');
   const [selectedCompany, setSelectedCompany] = useState('all');
   const [requetes, setRequetes] = useState<RequeteListDto[]>([]);
   const [entreprises, setEntreprises] = useState<EntrepriseDto[]>([]);
@@ -259,6 +259,7 @@ export default function Reports() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="all">Toutes les périodes</SelectItem>
               <SelectItem value="week">Cette semaine</SelectItem>
               <SelectItem value="month">Ce mois</SelectItem>
               <SelectItem value="quarter">Ce trimestre</SelectItem>
