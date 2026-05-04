@@ -1,0 +1,23 @@
+<svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Top spike -->
+  <line x1="100" y1="4" x2="100" y2="22" stroke="#1B75BB" stroke-width="5" stroke-linecap="round"/>
+
+  <!-- Umbrella canopy with 3 scallops at bottom -->
+  <path d="
+    M18 88
+    C18 42, 182 42, 182 88
+    Q166 76, 148 84
+    Q132 96, 118 82
+    Q108 72, 100 74
+    Q92 72, 82 82
+    Q68 96, 52 84
+    Q34 76, 18 88
+    Z
+  " fill="#1B75BB"/>
+
+  <!-- Vertical pole -->
+  <line x1="100" y1="74" x2="100" y2="158" stroke="#1B75BB" stroke-width="7" stroke-linecap="round"/>
+
+  <!-- Curved handle (curves left) -->
+  <path d="M100 158 Q100 180 78 184 Q58 188 58 168" stroke="#1B75BB" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -1,0 +1,586 @@
+import type { 
+  User, 
+  Company, 
+  Pole, 
+  PoleMember,
+  Delegate, 
+  Ticket, 
+  TicketMessage,
+  Notification,
+  CommunicationPost,
+  Document,
+  DashboardStats
+} from '@/types';
+
+// Companies
+export const companies: Company[] = [
+  { id: '1', name: 'Air Sénégal', code: 'AS' },
+  { id: '2', name: 'Senegal Airlines', code: 'SA' },
+  { id: '3', name: 'Transair', code: 'TA' },
+  { id: '4', name: 'AIBD', code: 'AIBD' },
+];
+
+// Poles
+export const poles: Pole[] = [
+  { id: '1', name: 'Rémunération & Avantages', description: 'Gestion des salaires, primes et avantages' },
+  { id: '2', name: 'Carrière & Formation', description: 'Évolution de carrière et développement professionnel' },
+  { id: '3', name: 'Contentieux', description: 'Gestion des litiges et sanctions' },
+  { id: '4', name: 'Recrutement', description: 'Contrats et embauches' },
+];
+
+// Current user (mock)
+export const currentUser: User = {
+  id: '1',
+  firstName: 'Doudou',
+  lastName: 'Mané',
+  email: 'doudou.mane@airsn.sn',
+  phone: '+221 77 123 45 67',
+  companyId: '1',
+  role: 'member',
+  createdAt: new Date('2024-01-15'),
+};
+
+// Mock users
+export const users: User[] = [
+  currentUser,
+  {
+    id: '2',
+    firstName: 'Fatou',
+    lastName: 'Sow',
+    email: 'fatou.sow@snecea.sn',
+    companyId: '1',
+    role: 'pole_manager',
+    createdAt: new Date('2023-06-01'),
+  },
+  {
+    id: '3',
+    firstName: 'Ibrahima',
+    lastName: 'Ndiaye',
+    email: 'ibrahima.ndiaye@snecea.sn',
+    companyId: '1',
+    role: 'admin',
+    createdAt: new Date('2022-01-01'),
+  },
+  {
+    id: '4',
+    firstName: 'Aminata',
+    lastName: 'Ba',
+    email: 'aminata.ba@transair.sn',
+    phone: '+221 77 234 56 78',
+    companyId: '3',
+    role: 'delegate',
+    createdAt: new Date('2023-09-15'),
+  },
+  {
+    id: '5',
+    firstName: 'Moussa',
+    lastName: 'Gaye',
+    email: 'moussa.gaye@airsn.sn',
+    companyId: '1',
+    role: 'member',
+    createdAt: new Date('2024-03-10'),
+  },
+  {
+    id: '6',
+    firstName: 'Awa',
+    lastName: 'Diouf',
+    email: 'awa.diouf@airsn.sn',
+    companyId: '1',
+    role: 'member',
+    createdAt: new Date('2024-04-05'),
+  },
+  {
+    id: '7',
+    firstName: 'Cheikh',
+    lastName: 'Sarr',
+    email: 'cheikh.sarr@senegalairlines.sn',
+    companyId: '2',
+    role: 'member',
+    createdAt: new Date('2024-02-12'),
+  },
+  {
+    id: '8',
+    firstName: 'Astou',
+    lastName: 'Ndao',
+    email: 'astou.ndao@senegalairlines.sn',
+    companyId: '2',
+    role: 'member',
+    createdAt: new Date('2024-01-28'),
+  },
+  {
+    id: '9',
+    firstName: 'Modou',
+    lastName: 'Fall',
+    email: 'modou.fall@transair.sn',
+    companyId: '3',
+    role: 'member',
+    createdAt: new Date('2024-05-02'),
+  },
+  {
+    id: '10',
+    firstName: 'Adama',
+    lastName: 'Samb',
+    email: 'adama.samb@transair.sn',
+    companyId: '3',
+    role: 'member',
+    createdAt: new Date('2024-03-22'),
+  },
+  {
+    id: '11',
+    firstName: 'Khadija',
+    lastName: 'Mboup',
+    email: 'khadija.mboup@aibd.sn',
+    companyId: '4',
+    role: 'member',
+    createdAt: new Date('2024-02-18'),
+  },
+  {
+    id: '12',
+    firstName: 'Lamine',
+    lastName: 'Bâ',
+    email: 'lamine.ba@aibd.sn',
+    companyId: '4',
+    role: 'member',
+    createdAt: new Date('2024-04-12'),
+  },
+];
+
+// Delegates
+export const delegates: Delegate[] = [
+  {
+    id: '1',
+    userId: '4',
+    user: users[3],
+    companyId: '3',
+    company: companies[2],
+    phone: '+221 77 234 56 78',
+    email: 'aminata.ba@transair.sn',
+    isActive: true,
+  },
+  {
+    id: '2',
+    userId: '2',
+    user: users[1],
+    companyId: '1',
+    company: companies[0],
+    phone: '+221 77 345 67 89',
+    email: 'fatou.sow@snecea.sn',
+    isActive: true,
+  },
+];
+
+// Pole members (mock)
+export const poleMembers: PoleMember[] = [
+  { id: '1', poleId: '1', userId: '1', role: 'head' },
+  { id: '2', poleId: '1', userId: '2', role: 'assistant' },
+  { id: '3', poleId: '1', userId: '5', role: 'member' },
+  { id: '4', poleId: '1', userId: '6', role: 'member' },
+  { id: '5', poleId: '2', userId: '3', role: 'head' },
+  { id: '6', poleId: '2', userId: '4', role: 'assistant' },
+  { id: '7', poleId: '2', userId: '7', role: 'member' },
+  { id: '8', poleId: '2', userId: '8', role: 'member' },
+  { id: '9', poleId: '3', userId: '2', role: 'head' },
+  { id: '10', poleId: '3', userId: '1', role: 'assistant' },
+  { id: '11', poleId: '3', userId: '9', role: 'member' },
+  { id: '12', poleId: '3', userId: '10', role: 'member' },
+  { id: '13', poleId: '4', userId: '3', role: 'head' },
+  { id: '14', poleId: '4', userId: '4', role: 'assistant' },
+  { id: '15', poleId: '4', userId: '11', role: 'member' },
+  { id: '16', poleId: '4', userId: '12', role: 'member' },
+];
+
+// Mock tickets
+export const tickets: Ticket[] = [
+  {
+    id: '1',
+    reference: 'REQ-2026-0001',
+    type: 'working_conditions_remuneration',
+    urgency: 'high',
+    status: 'processing',
+    subject: 'Prime de transport non versée',
+    description: 'Ma prime de transport du mois de décembre 2025 n\'a pas été versée. J\'ai vérifié mon bulletin de salaire et la ligne correspondante est absente.',
+    userId: '1',
+    user: currentUser,
+    companyId: '1',
+    company: companies[0],
+    poleId: '1',
+    pole: poles[0],
+    attachments: [],
+    messages: [],
+    hrInteractions: [],
+    createdAt: new Date('2026-01-20'),
+    updatedAt: new Date('2026-01-25'),
+  },
+  {
+    id: '2',
+    reference: 'REQ-2026-0002',
+    type: 'social_mediation',
+    urgency: 'critical',
+    status: 'new',
+    subject: 'Contestation avertissement injustifié',
+    description: 'J\'ai reçu un avertissement pour retard alors que j\'étais en mission officielle ce jour-là. Je dispose des preuves de ma mission.',
+    userId: '1',
+    user: currentUser,
+    companyId: '1',
+    company: companies[0],
+    attachments: [],
+    messages: [],
+    hrInteractions: [],
+    createdAt: new Date('2026-01-28'),
+    updatedAt: new Date('2026-01-28'),
+  },
+  {
+    id: '3',
+    reference: 'REQ-2026-0003',
+    type: 'training_career',
+    urgency: 'medium',
+    status: 'info_needed',
+    subject: 'Demande de formation certifiante',
+    description: 'Je souhaite bénéficier d\'une formation certifiante en management de projet. Cette formation est essentielle pour mon évolution de carrière.',
+    userId: '1',
+    user: currentUser,
+    companyId: '1',
+    company: companies[0],
+    poleId: '2',
+    pole: poles[1],
+    attachments: [],
+    messages: [
+      {
+        id: '1',
+        ticketId: '3',
+        userId: '2',
+        user: users[1],
+        content: 'Bonjour, pourriez-vous nous fournir le programme détaillé de la formation ainsi que son coût estimatif ?',
+        isInternal: false,
+        createdAt: new Date('2026-01-26'),
+      },
+    ],
+    hrInteractions: [],
+    createdAt: new Date('2026-01-22'),
+    updatedAt: new Date('2026-01-26'),
+  },
+  {
+    id: '4',
+    reference: 'REQ-2026-0004',
+    type: 'social_mediation',
+    urgency: 'critical',
+    status: 'hr_escalated',
+    subject: 'Menace de licenciement abusif',
+    description: 'Mon supérieur m\'a menacé de licenciement pour des raisons que j\'estime non fondées. Je demande l\'intervention urgente du S.N.E.C.E.A.',
+    userId: '1',
+    user: currentUser,
+    companyId: '1',
+    company: companies[0],
+    poleId: '3',
+    pole: poles[2],
+    delegateId: '2',
+    delegate: delegates[1],
+    attachments: [],
+    messages: [],
+    hrInteractions: [
+      {
+        id: '1',
+        ticketId: '4',
+        userId: '2',
+        user: users[1],
+        contactName: 'M. Diop',
+        contactRole: 'Directeur RH',
+        notes: 'Premier contact établi. RH demande une réunion tripartite.',
+        createdAt: new Date('2026-01-27'),
+      },
+    ],
+    createdAt: new Date('2026-01-25'),
+    updatedAt: new Date('2026-01-27'),
+  },
+  {
+    id: '5',
+    reference: 'REQ-2025-0089',
+    type: 'working_conditions_remuneration',
+    urgency: 'low',
+    status: 'resolved',
+    subject: 'Régularisation heures supplémentaires',
+    description: 'Mes heures supplémentaires du T3 2025 n\'ont pas été payées.',
+    userId: '1',
+    user: currentUser,
+    companyId: '1',
+    company: companies[0],
+    poleId: '1',
+    pole: poles[0],
+    attachments: [],
+    messages: [],
+    hrInteractions: [],
+    createdAt: new Date('2025-10-15'),
+    updatedAt: new Date('2025-12-20'),
+  },
+  {
+    id: '6',
+    reference: 'REQ-2026-0006',
+    type: 'health_safety_wellbeing',
+    urgency: 'medium',
+    status: 'processing',
+    subject: 'Stress élevé et surcharge',
+    description: 'Le rythme de travail génère un stress excessif. Nous demandons une action rapide.',
+    userId: '7',
+    user: users[6],
+    companyId: '2',
+    company: companies[1],
+    poleId: '4',
+    pole: poles[3],
+    attachments: [],
+    messages: [],
+    hrInteractions: [],
+    createdAt: new Date('2026-01-18'),
+    updatedAt: new Date('2026-01-19'),
+  },
+  {
+    id: '7',
+    reference: 'REQ-2026-0007',
+    type: 'social_mediation',
+    urgency: 'high',
+    status: 'new',
+    subject: 'Menace de licenciement sans motif',
+    description: 'Une menace de licenciement a été faite sans justification.',
+    userId: '8',
+    user: users[7],
+    companyId: '2',
+    company: companies[1],
+    poleId: '3',
+    pole: poles[2],
+    attachments: [],
+    messages: [],
+    hrInteractions: [],
+    createdAt: new Date('2026-01-23'),
+    updatedAt: new Date('2026-01-23'),
+  },
+  {
+    id: '8',
+    reference: 'REQ-2026-0008',
+    type: 'working_conditions_remuneration',
+    urgency: 'high',
+    status: 'info_needed',
+    subject: 'Retard de salaire',
+    description: 'Les salaires du mois ne sont pas versés à temps.',
+    userId: '9',
+    user: users[8],
+    companyId: '3',
+    company: companies[2],
+    poleId: '1',
+    pole: poles[0],
+    attachments: [],
+    messages: [],
+    hrInteractions: [],
+    createdAt: new Date('2026-01-21'),
+    updatedAt: new Date('2026-01-22'),
+  },
+  {
+    id: '9',
+    reference: 'REQ-2026-0009',
+    type: 'training_career',
+    urgency: 'low',
+    status: 'processing',
+    subject: 'Blocage de carrière',
+    description: 'Absence de promotion depuis plusieurs années malgré des évaluations positives.',
+    userId: '11',
+    user: users[10],
+    companyId: '4',
+    company: companies[3],
+    poleId: '2',
+    pole: poles[1],
+    attachments: [],
+    messages: [],
+    hrInteractions: [],
+    createdAt: new Date('2026-01-16'),
+    updatedAt: new Date('2026-01-18'),
+  },
+];
+
+// Notifications
+export const notifications: Notification[] = [
+  {
+    id: '1',
+    userId: '1',
+    title: 'Mise à jour de votre requête',
+    message: 'Votre requête REQ-2026-0003 nécessite des informations complémentaires.',
+    type: 'info_request',
+    ticketId: '3',
+    isRead: false,
+    createdAt: new Date('2026-01-26'),
+  },
+  {
+    id: '2',
+    userId: '1',
+    title: 'Requête escaladée',
+    message: 'Votre requête REQ-2026-0004 a été escaladée aux RH.',
+    type: 'ticket_update',
+    ticketId: '4',
+    isRead: false,
+    createdAt: new Date('2026-01-27'),
+  },
+  {
+    id: '3',
+    userId: '1',
+    title: 'Communication syndicale',
+    message: 'Nouvelle communication du bureau national.',
+    type: 'general',
+    isRead: true,
+    createdAt: new Date('2026-01-20'),
+  },
+];
+
+// Communication posts
+export const communicationPosts: CommunicationPost[] = [
+  {
+    id: '1',
+    title: 'Assemblée générale annuelle 2026',
+    content: 'Chers adhérents, l\'assemblée générale annuelle se tiendra le 15 mars 2026 à 10h00 au siège. Votre présence est vivement souhaitée.',
+    visibility: 'global',
+    authorId: '3',
+    author: users[2],
+    attachments: [],
+    createdAt: new Date('2026-01-15'),
+  },
+  {
+    id: '2',
+    title: 'Négociations salariales Air Sénégal',
+    content: 'Les négociations salariales avec la direction d\'Air Sénégal ont débuté. Nous vous tiendrons informés de l\'avancement.',
+    visibility: 'company',
+    targetId: '1',
+    authorId: '3',
+    author: users[2],
+    attachments: [],
+    createdAt: new Date('2026-01-22'),
+  },
+];
+
+// Documents
+export const documents: Document[] = [
+  {
+    id: '1',
+    name: 'Convention collective 2026',
+    description: 'Convention collective du secteur aérien',
+    year: 2026,
+    category: 'Conventions',
+    url: '/documents/convention-2026.pdf',
+    version: 1,
+    uploadedBy: '3',
+    createdAt: new Date('2026-01-01'),
+    updatedAt: new Date('2026-01-01'),
+  },
+  {
+    id: '2',
+    name: 'Grille salariale 2026',
+    poleId: '1',
+    pole: poles[0],
+    year: 2026,
+    category: 'Rémunération',
+    url: '/documents/grille-2026.pdf',
+    version: 2,
+    uploadedBy: '2',
+    createdAt: new Date('2026-01-05'),
+    updatedAt: new Date('2026-01-10'),
+  },
+];
+
+// Dashboard stats for member
+export const memberDashboardStats: DashboardStats = {
+  ticketsInProgress: 3,
+  ticketsClosed: 1,
+  ticketsByUrgency: { low: 1, medium: 1, high: 1, critical: 2 },
+  ticketsByStatus: { 
+    new: 1, 
+    info_needed: 1, 
+    processing: 1, 
+    hr_escalated: 1, 
+    hr_pending: 0, 
+    resolved: 1, 
+    closed: 0 
+  },
+  ticketsByCompany: [],
+  recentTickets: tickets.slice(0, 3),
+  overdueTickets: [],
+};
+
+// Dashboard stats for admin
+export const adminDashboardStats: DashboardStats = {
+  ticketsInProgress: 45,
+  ticketsClosed: 128,
+  ticketsByUrgency: { low: 15, medium: 22, high: 18, critical: 8 },
+  ticketsByStatus: { 
+    new: 12, 
+    info_needed: 8, 
+    processing: 15, 
+    hr_escalated: 6, 
+    hr_pending: 4, 
+    resolved: 10, 
+    closed: 8 
+  },
+  ticketsByCompany: [
+    { company: 'Air Sénégal', count: 28 },
+    { company: 'Senegal Airlines', count: 15 },
+    { company: 'Transair', count: 12 },
+    { company: 'AIBD', count: 8 },
+  ],
+  recentTickets: tickets,
+  overdueTickets: [tickets[1], tickets[3]],
+};
+
+// Ticket type labels
+export const ticketTypeLabels: Record<string, string> = {
+  working_conditions_remuneration: 'Conditions de Travail et Rémunération',
+  training_career: 'Formation et Carrière',
+  social_mediation: 'Dialogue Social et Médiation',
+  health_safety_wellbeing: 'Santé, Sécurité et Bien-être au Travail',
+  legal_compliance: 'Juridique et Conformité',
+  communication_awareness: 'Communication et Sensibilisation',
+  innovation_digital_transformation: 'Innovation, Digitalisation et Transformation',
+  external_relations_partnerships: 'Relations Extérieures et Partenariats',
+  youth_new_employees: 'Jeunesse et Intégration des Nouveaux Employés',
+  sport_wellbeing: 'Sport et Bien-être',
+  other: 'Autre',
+};
+
+// Ticket type descriptions (tooltips)
+export const ticketTypeDescriptions: Record<string, string> = {
+  working_conditions_remuneration:
+    'Salaires, primes, heures supplémentaires, conditions de travail et conformité convention collective.',
+  training_career:
+    'Accès à la formation, évolution de carrière, promotion, reconnaissance des compétences, mentorat.',
+  social_mediation:
+    'Conflits, climat social, assistance disciplinaire et médiation avant escalade juridique.',
+  health_safety_wellbeing:
+    'Santé mentale et physique, sécurité au travail, ergonomie, accidents, couverture santé.',
+  legal_compliance:
+    'Non-respect du Code du Travail, besoin d’assistance juridique, contentieux en cours.',
+  communication_awareness:
+    'Information sur les droits, campagnes internes, activités syndicales, sensibilisation.',
+  innovation_digital_transformation:
+    'Outils numériques, digitalisation, propositions d’innovation, IA et transformation interne.',
+  external_relations_partnerships:
+    'Partenariats, relations inter-syndicales, événements externes, relations internationales.',
+  youth_new_employees:
+    'Intégration, stages, accompagnement des jeunes recrues, groupe jeunes, sensibilisation.',
+  sport_wellbeing:
+    'Activités sportives, tournois, journées bien-être, gestion du stress, cohésion.',
+  other:
+    'Toute demande ne correspondant pas aux catégories ci-dessus.',
+};
+
+// Urgency labels
+export const urgencyLabels: Record<string, string> = {
+  low: 'Faible',
+  medium: 'Moyenne',
+  high: 'Élevée',
+  critical: 'Critique',
+};
+
+// Status labels
+export const statusLabels: Record<string, string> = {
+  new: 'Nouveau',
+  info_needed: 'Besoin d\'infos',
+  processing: 'En traitement',
+  hr_escalated: 'Escaladé RH',
+  hr_pending: 'En attente RH',
+  resolved: 'Résolu',
+  non_resolu: 'Non résolu',
+  closed: 'Clôturé',
+};

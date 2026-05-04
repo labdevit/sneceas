@@ -1,0 +1,288 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* S.N.E.C.E.A Design System — Palette officielle logo */
+    /* Bleu cobalt SNECEA : #1B75BB → HSL 207 74% 42%          */
+    /* Marine foncé sidebar : #0E2E55 → HSL 213 72% 19%        */
+
+    --background: 210 18% 97%;
+    --foreground: 214 38% 14%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 214 38% 14%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 214 38% 14%;
+
+    /* Primary — bleu cobalt du parapluie SNECEA */
+    --primary: 207 74% 42%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary — gris-bleu très clair */
+    --secondary: 207 25% 93%;
+    --secondary-foreground: 214 38% 14%;
+
+    --muted: 207 18% 95%;
+    --muted-foreground: 210 16% 42%;
+
+    --accent: 207 40% 90%;
+    --accent-foreground: 207 74% 35%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 207 22% 88%;
+    --input: 207 22% 88%;
+    --ring: 207 74% 42%;
+
+    --radius: 0.625rem;
+
+    /* Sidebar — marine profond du logo SNECEA */
+    --sidebar-background: 213 72% 17%;
+    --sidebar-foreground: 207 30% 92%;
+    --sidebar-primary: 207 74% 52%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 213 62% 24%;
+    --sidebar-accent-foreground: 207 30% 96%;
+    --sidebar-border: 213 55% 24%;
+    --sidebar-ring: 207 74% 52%;
+
+    /* S.N.E.C.E.A Custom Tokens */
+    /* Urgency colors */
+    --urgency-critical: 0 72% 51%;
+    --urgency-critical-foreground: 0 0% 100%;
+    --urgency-high: 38 92% 50%;
+    --urgency-high-foreground: 0 0% 100%;
+    --urgency-medium: 45 93% 47%;
+    --urgency-medium-foreground: 0 0% 15%;
+    --urgency-low: 207 18% 62%;
+    --urgency-low-foreground: 0 0% 100%;
+
+    /* Status colors */
+    --status-new: 207 74% 42%;
+    --status-new-foreground: 0 0% 100%;
+    --status-info-needed: 270 60% 55%;
+    --status-info-needed-foreground: 0 0% 100%;
+    --status-processing: 38 92% 50%;
+    --status-processing-foreground: 0 0% 100%;
+    --status-hr-escalated: 340 65% 50%;
+    --status-hr-escalated-foreground: 0 0% 100%;
+    --status-resolved: 152 65% 34%;
+    --status-resolved-foreground: 0 0% 100%;
+    --status-closed: 213 22% 42%;
+    --status-closed-foreground: 0 0% 100%;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(213, 72%, 17%) 0%, hsl(207, 74%, 42%) 100%);
+    --gradient-sidebar: linear-gradient(180deg, hsl(213, 72%, 17%) 0%, hsl(213, 78%, 12%) 100%);
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px 0 hsl(214 38% 14% / 0.05);
+    --shadow-md: 0 4px 6px -1px hsl(214 38% 14% / 0.08), 0 2px 4px -2px hsl(214 38% 14% / 0.05);
+    --shadow-lg: 0 10px 15px -3px hsl(214 38% 14% / 0.08), 0 4px 6px -4px hsl(214 38% 14% / 0.05);
+    --shadow-card: 0 1px 3px 0 hsl(214 38% 14% / 0.06), 0 1px 2px -1px hsl(214 38% 14% / 0.06);
+  }
+
+  .dark {
+    --background: 213 40% 8%;
+    --foreground: 207 20% 95%;
+
+    --card: 213 38% 12%;
+    --card-foreground: 207 20% 95%;
+
+    --popover: 213 38% 12%;
+    --popover-foreground: 207 20% 95%;
+
+    --primary: 207 74% 52%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 213 30% 18%;
+    --secondary-foreground: 207 20% 90%;
+
+    --muted: 213 30% 18%;
+    --muted-foreground: 207 16% 56%;
+
+    --accent: 213 35% 22%;
+    --accent-foreground: 207 20% 95%;
+
+    --destructive: 0 62% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 213 30% 22%;
+    --input: 213 30% 22%;
+    --ring: 207 74% 52%;
+
+    --sidebar-background: 213 72% 11%;
+    --sidebar-foreground: 207 30% 92%;
+    --sidebar-primary: 207 74% 56%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 213 62% 18%;
+    --sidebar-accent-foreground: 207 30% 96%;
+    --sidebar-border: 213 55% 18%;
+    --sidebar-ring: 207 74% 56%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+@layer components {
+  /* Card hover effect */
+  .card-interactive {
+    @apply transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5;
+  }
+
+  /* Badge base styles */
+  .badge-urgency-critical {
+    @apply bg-[hsl(var(--urgency-critical))] text-[hsl(var(--urgency-critical-foreground))];
+  }
+  .badge-urgency-high {
+    @apply bg-[hsl(var(--urgency-high))] text-[hsl(var(--urgency-high-foreground))];
+  }
+  .badge-urgency-medium {
+    @apply bg-[hsl(var(--urgency-medium))] text-[hsl(var(--urgency-medium-foreground))];
+  }
+  .badge-urgency-low {
+    @apply bg-[hsl(var(--urgency-low))] text-[hsl(var(--urgency-low-foreground))];
+  }
+
+  .badge-status-new {
+    @apply bg-[hsl(var(--status-new))] text-[hsl(var(--status-new-foreground))];
+  }
+  .badge-status-info-needed {
+    @apply bg-[hsl(var(--status-info-needed))] text-[hsl(var(--status-info-needed-foreground))];
+  }
+  .badge-status-processing {
+    @apply bg-[hsl(var(--status-processing))] text-[hsl(var(--status-processing-foreground))];
+  }
+  .badge-status-hr-escalated {
+    @apply bg-[hsl(var(--status-hr-escalated))] text-[hsl(var(--status-hr-escalated-foreground))];
+  }
+  .badge-status-resolved {
+    @apply bg-[hsl(var(--status-resolved))] text-[hsl(var(--status-resolved-foreground))];
+  }
+  .badge-status-closed {
+    @apply bg-[hsl(var(--status-closed))] text-[hsl(var(--status-closed-foreground))];
+  }
+
+  /* Sidebar animation */
+  .sidebar-item {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground/80 
+           hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors duration-150;
+  }
+  .sidebar-item-active {
+    @apply bg-sidebar-accent text-sidebar-primary font-medium;
+  }
+
+  /* Form field focus */
+  .input-focus {
+    @apply focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-150;
+  }
+
+  /* Wizard step indicator */
+  .wizard-step {
+    @apply flex items-center justify-center w-10 h-10 rounded-full text-sm font-semibold transition-all duration-200;
+  }
+  .wizard-step-active {
+    @apply bg-primary text-primary-foreground shadow-md;
+  }
+  .wizard-step-completed {
+    @apply bg-[hsl(var(--status-resolved))] text-white;
+  }
+  .wizard-step-pending {
+    @apply bg-muted text-muted-foreground;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Animation utilities */
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-out;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.3s ease-out;
+  }
+
+  .animate-slide-in-left {
+    animation: slideInLeft 0.2s ease-out;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes slideUp {
+    from { 
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to { 
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes slideInLeft {
+    from {
+      opacity: 0;
+      transform: translateX(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+}
+
+/* TipTap Editor Styles */
+.tiptap {
+  outline: none;
+}
+.tiptap p.is-editor-empty:first-child::before {
+  color: hsl(var(--muted-foreground));
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+.tiptap h1, .tiptap h2, .tiptap h3 {
+  font-weight: 700;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+}
+.tiptap h1 { font-size: 1.5em; }
+.tiptap h2 { font-size: 1.25em; }
+.tiptap h3 { font-size: 1.1em; }
+.tiptap ul, .tiptap ol {
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+.tiptap ul { list-style: disc; }
+.tiptap ol { list-style: decimal; }
+.tiptap p { margin: 0.25em 0; }
+.tiptap strong { font-weight: 700; }
+.tiptap em { font-style: italic; }
+.tiptap u { text-decoration: underline; }
+.tiptap a { color: hsl(var(--primary)); text-decoration: underline; }
+
+/* Toolbar active state for WYSIWYG buttons */
+button[data-active="true"] {
+  background-color: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
