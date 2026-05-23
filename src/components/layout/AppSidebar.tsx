@@ -21,6 +21,7 @@ import {
   Star,
   ClipboardList,
   Building2,
+  Globe,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -59,6 +60,7 @@ const mainNavItems: NavItem[] = [
 const adminNavItems: NavItem[] = [
   { label: 'Rapports', icon: BarChart3, href: '/reports', feature: 'reports' },
   { label: 'Administration', icon: Shield, href: '/admin', feature: 'admin' },
+  { label: 'Site web (CMS)', icon: Globe, href: '/cms', feature: 'admin' },
 ];
 
 const bottomNavItems: NavItem[] = [

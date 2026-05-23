@@ -1,0 +1,135 @@
+const BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://188.245.55.173:8000/api';
+
+function h(): Record<string, string> {
+  const token = localStorage.getItem('snecea_token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Token ${token}` } : {}),
+  };
+}
+
+async function req<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(BASE + path, { headers: h(), ...init });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as Record<string, unknown>).detail as string ?? `HTTP ${res.status}`);
+  }
+  if (res.status === 204) return undefined as T;
+  const data = await res.json();
+  if (data && typeof data === 'object' && 'results' in data) return (data as { results: T }).results;
+  return data as T;
+}
+
+export interface CmsSlide {
+  id: string;
+  title: string;
+  subtitle: string;
+  badge_text: string;
+  background: string;
+  image_url: string;
+  cta_label: string;
+  cta_url: string;
+  cta_label_secondary: string;
+  cta_url_secondary: string;
+  order: number;
+}
+
+export interface CmsService {
+  id: string;
+  title: string;
+  slug: string;
+  icon: string;
+  short_description: string;
+  body: string;
+  order: number;
+}
+
+export interface CmsArticle {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt: string;
+  cover: string;
+  cover_image_url: string;
+  author_name: string;
+  category: string;
+  status: string;
+  is_featured: boolean;
+  published_at: string | null;
+  created_at: string;
+  body: string;
+}
+
+export interface CmsEvent {
+  id: string;
+  title: string;
+  slug: string;
+  description: string;
+  cover: string;
+  cover_image_url: string;
+  location: string;
+  address: string;
+  start_date: string;
+  end_date: string | null;
+  status: string;
+  is_featured: boolean;
+  registration_url: string;
+  created_at: string;
+}
+
+export interface CmsTeamMember {
+  id: string;
+  full_name: string;
+  role: string;
+  bio: string;
+  avatar: string;
+  photo_url: string;
+  email: string;
+  linkedin_url: string;
+  order: number;
+}
+
+export const cmsSlides = {
+  list: () => req<CmsSlide[]>('/cms/slides/'),
+  create: (data: Partial<CmsSlide>) =>
+    req<CmsSlide>('/cms/slides/', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<CmsSlide>) =>
+    req<CmsSlide>(`/cms/slides/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
+  remove: (id: string) => req<void>(`/cms/slides/${id}/`, { method: 'DELETE' }),
+};
+
+export const cmsServices = {
+  list: () => req<CmsService[]>('/cms/services/'),
+  create: (data: Partial<CmsService>) =>
+    req<CmsService>('/cms/services/', { method: 'POST', body: JSON.stringify(data) }),
+  update: (slug: string, data: Partial<CmsService>) =>
+    req<CmsService>(`/cms/services/${slug}/`, { method: 'PATCH', body: JSON.stringify(data) }),
+  remove: (slug: string) => req<void>(`/cms/services/${slug}/`, { method: 'DELETE' }),
+};
+
+export const cmsArticles = {
+  list: () => req<CmsArticle[]>('/cms/articles/'),
+  create: (data: Partial<CmsArticle>) =>
+    req<CmsArticle>('/cms/articles/', { method: 'POST', body: JSON.stringify(data) }),
+  update: (slug: string, data: Partial<CmsArticle>) =>
+    req<CmsArticle>(`/cms/articles/${slug}/`, { method: 'PATCH', body: JSON.stringify(data) }),
+  remove: (slug: string) => req<void>(`/cms/articles/${slug}/`, { method: 'DELETE' }),
+};
+
+export const cmsEvents = {
+  list: () => req<CmsEvent[]>('/cms/events/'),
+  create: (data: Partial<CmsEvent>) =>
+    req<CmsEvent>('/cms/events/', { method: 'POST', body: JSON.stringify(data) }),
+  update: (slug: string, data: Partial<CmsEvent>) =>
+    req<CmsEvent>(`/cms/events/${slug}/`, { method: 'PATCH', body: JSON.stringify(data) }),
+  remove: (slug: string) => req<void>(`/cms/events/${slug}/`, { method: 'DELETE' }),
+};
+
+export const cmsTeam = {
+  list: () => req<CmsTeamMember[]>('/cms/team/'),
+  create: (data: Partial<CmsTeamMember>) =>
+    req<CmsTeamMember>('/cms/team/', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<CmsTeamMember>) =>
+    req<CmsTeamMember>(`/cms/team/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
+  remove: (id: string) => req<void>(`/cms/team/${id}/`, { method: 'DELETE' }),
+};

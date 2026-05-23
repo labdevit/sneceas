@@ -29,6 +29,7 @@ import Register from "@/pages/Register";
 import ForgotPassword from "@/pages/ForgotPassword";
 import ResetPassword from "@/pages/ResetPassword";
 import NotFound from "@/pages/NotFound";
+import Cms from "@/pages/Cms";
 
 const queryClient = new QueryClient();
 
@@ -97,6 +98,7 @@ const App = () => (
                 {/* Administration — super_admin + syndic_admin */}
                 <Route element={<ProtectedRoute allowedRoles={PERMISSIONS.admin} />}>
                   <Route path="/admin" element={<Admin />} />
+                  <Route path="/cms" element={<Cms />} />
                 </Route>
               </Route>
             </Route>

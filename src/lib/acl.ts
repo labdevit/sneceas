@@ -63,7 +63,8 @@ export type Feature =
   | "communication"
   | "reports"
   | "company_ratings"
-  | "admin";
+  | "admin"
+  | "cms";
 
 /**
  * Matrice ACL : pour chaque feature, liste des role_codes autorisés.
@@ -174,6 +175,7 @@ export const PERMISSIONS: Record<Feature, RoleCode[]> = {
   ],
 
   admin: ADMIN_ROLES,
+  cms: ADMIN_ROLES,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -222,6 +224,7 @@ export const ROUTE_PERMISSIONS: Record<string, Feature> = {
   "/company-ratings": "company_ratings",
   "/reports": "reports",
   "/admin": "admin",
+  "/cms": "cms",
 };
 
 // ── Sidebar navigation mapping ──────────────────────────────────────
@@ -239,6 +242,7 @@ export const SIDEBAR_FEATURES: Record<string, Feature> = {
   "/company-ratings": "company_ratings",
   "/reports": "reports",
   "/admin": "admin",
+  "/cms": "cms",
 };
 
 // ── Labels pour affichage ────────────────────────────────────────────
