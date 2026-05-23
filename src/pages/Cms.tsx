@@ -662,6 +662,218 @@ function ContactTab() {
 }
 
 
+// -- PARTENAIRES -------------------------------------------------------------
+const PARTNER_BLANK: Partial<CmsPartner> = { name: '', logo_url: '', website_url: '', order: 1, is_active: true };
+
+function PartnersTab() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<CmsPartner | null>(null);
+  const [form, setForm] = useState<Partial<CmsPartner>>(PARTNER_BLANK);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+
+  const set = (k: keyof CmsPartner, v: unknown) => setForm(f => ({ ...f, [k]: v }));
+  const inv = () => qc.invalidateQueries({ queryKey: ['cms-partners'] });
+
+  const { data: items = [], isLoading } = useQuery({ queryKey: ['cms-partners'], queryFn: cmsPartners.list });
+
+  const save = useMutation({
+    mutationFn: () => editing
+      ? cmsPartners.update(editing.id, form, pendingFile ?? undefined)
+      : cmsPartners.create(form, pendingFile ?? undefined),
+    onSuccess: () => { inv(); setOpen(false); setPendingFile(null); toast({ title: editing ? 'Partenaire modifie' : 'Partenaire ajoute' }); },
+    onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
+  });
+
+  const del = useMutation({
+    mutationFn: (id: string) => cmsPartners.remove(id),
+    onSuccess: () => { inv(); toast({ title: 'Partenaire supprime' }); },
+    onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
+  });
+
+  function openNew() { setEditing(null); setForm(PARTNER_BLANK); setPendingFile(null); setOpen(true); }
+  function openEdit(p: CmsPartner) { setEditing(p); setForm(p); setPendingFile(null); setOpen(true); }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">{items.length} partenaire{items.length !== 1 ? 's' : ''}</p>
+        <Button size="sm" onClick={openNew}><Plus className="w-3.5 h-3.5 mr-1" />Ajouter</Button>
+      </div>
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="animate-spin w-5 h-5 text-muted-foreground" /></div>
+      ) : items.length === 0 ? (
+        <div className="text-center py-10 text-muted-foreground text-sm">Aucun partenaire. Cliquez sur Ajouter.</div>
+      ) : (
+        <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
+          {items.map(p => (
+            <div key={p.id} className="group relative rounded-xl border bg-card p-4 flex flex-col items-center gap-2">
+              {p.logo_src
+                ? <img src={p.logo_src} alt={p.name} className="h-14 w-full object-contain" />
+                : <div className="h-14 w-full flex items-center justify-center bg-muted rounded text-sm font-medium">{p.name}</div>}
+              <p className="text-xs text-center font-medium truncate w-full">{p.name}</p>
+              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <Button size="icon" variant="secondary" className="w-7 h-7" onClick={() => openEdit(p)}><Pencil className="w-3.5 h-3.5" /></Button>
+                <Button size="icon" variant="destructive" className="w-7 h-7" onClick={() => { if (confirm('Supprimer ?')) del.mutate(p.id); }}><Trash2 className="w-3.5 h-3.5" /></Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={open} onOpenChange={o => { if (!o) { setOpen(false); setPendingFile(null); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>{editing ? 'Modifier le partenaire' : 'Ajouter un partenaire'}</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <Field label="Nom *">
+              <Input value={form.name ?? ''} onChange={e => set('name', e.target.value)} placeholder="Nom du partenaire" />
+            </Field>
+            <Field label="Logo">
+              <ImageDropzone currentUrl={form.logo_url ?? ''} onFileChange={f => setPendingFile(f)} onUrlChange={u => set('logo_url', u)} />
+            </Field>
+            <Field label="Site web">
+              <Input value={form.website_url ?? ''} onChange={e => set('website_url', e.target.value)} placeholder="https://..." />
+            </Field>
+            <Field label="Ordre">
+              <Input type="number" min={1} value={form.order ?? 1} onChange={e => set('order', parseInt(e.target.value) || 1)} className="w-24" />
+            </Field>
+            <div className="flex items-center gap-2">
+              <Switch checked={form.is_active ?? true} onCheckedChange={v => set('is_active', v)} id="partner-active" />
+              <Label htmlFor="partner-active" className="text-sm">Visible sur le site</Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
+            <Button onClick={() => save.mutate()} disabled={save.isPending || !form.name}>
+              {save.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+              {editing ? 'Enregistrer' : 'Ajouter'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// -- DOCUMENTS ----------------------------------------------------------------
+const DOC_BLANK: Partial<CmsPublicDocument> = { title: '', description: '', category: 'autre', file_url: '', order: 1, is_active: true };
+const DOC_CATEGORIES = [
+  { value: 'institutionnel', label: 'Institutionnel & Juridique' },
+  { value: 'convention',     label: 'Conventions Collectives' },
+  { value: 'evaluation',     label: 'Evaluation des Entreprises' },
+  { value: 'adherent',       label: 'Documents Adherents' },
+  { value: 'financier',      label: 'Transparence Financiere' },
+  { value: 'autre',          label: 'Autres Documents' },
+];
+
+function DocumentsTab() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<CmsPublicDocument | null>(null);
+  const [form, setForm] = useState<Partial<CmsPublicDocument>>(DOC_BLANK);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+
+  const set = (k: keyof CmsPublicDocument, v: unknown) => setForm(f => ({ ...f, [k]: v }));
+  const inv = () => qc.invalidateQueries({ queryKey: ['cms-documents'] });
+
+  const { data: items = [], isLoading } = useQuery({ queryKey: ['cms-documents'], queryFn: cmsPublicDocuments.list });
+
+  const save = useMutation({
+    mutationFn: () => editing
+      ? cmsPublicDocuments.update(editing.id, form, pendingFile ?? undefined)
+      : cmsPublicDocuments.create(form, pendingFile ?? undefined),
+    onSuccess: () => { inv(); setOpen(false); setPendingFile(null); toast({ title: editing ? 'Document modifie' : 'Document ajoute' }); },
+    onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
+  });
+
+  const del = useMutation({
+    mutationFn: (id: string) => cmsPublicDocuments.remove(id),
+    onSuccess: () => { inv(); toast({ title: 'Document supprime' }); },
+    onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
+  });
+
+  function openNew() { setEditing(null); setForm(DOC_BLANK); setPendingFile(null); setOpen(true); }
+  function openEdit(d: CmsPublicDocument) { setEditing(d); setForm(d); setPendingFile(null); setOpen(true); }
+
+  const catLabel = (key: string) => DOC_CATEGORIES.find(c => c.value === key)?.label ?? key;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">{items.length} document{items.length !== 1 ? 's' : ''}</p>
+        <Button size="sm" onClick={openNew}><Plus className="w-3.5 h-3.5 mr-1" />Ajouter</Button>
+      </div>
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="animate-spin w-5 h-5 text-muted-foreground" /></div>
+      ) : items.length === 0 ? (
+        <div className="text-center py-10 text-muted-foreground text-sm">Aucun document. Cliquez sur Ajouter.</div>
+      ) : (
+        <div className="space-y-2">
+          {items.map(d => (
+            <div key={d.id} className="flex items-center gap-3 p-3 rounded-lg border bg-card">
+              <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{d.title}</p>
+                <p className="text-xs text-muted-foreground">{catLabel(d.category)}</p>
+              </div>
+              {d.download_url && <a href={d.download_url} target="_blank" rel="noreferrer" className="text-xs text-primary underline shrink-0">PDF</a>}
+              <Button size="icon" variant="ghost" className="w-7 h-7 shrink-0" onClick={() => openEdit(d)}><Pencil className="w-3.5 h-3.5" /></Button>
+              <Button size="icon" variant="ghost" className="w-7 h-7 shrink-0 text-destructive" onClick={() => { if (confirm('Supprimer ?')) del.mutate(d.id); }}><Trash2 className="w-3.5 h-3.5" /></Button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={open} onOpenChange={o => { if (!o) { setOpen(false); setPendingFile(null); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>{editing ? 'Modifier le document' : 'Ajouter un document'}</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <Field label="Titre *">
+              <Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} placeholder="Titre du document" />
+            </Field>
+            <Field label="Categorie">
+              <Select value={form.category ?? 'autre'} onValueChange={v => set('category', v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {DOC_CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Fichier PDF">
+              <input type="file" accept=".pdf" className="text-sm" onChange={e => { const f = e.target.files?.[0]; if (f) setPendingFile(f); }} />
+              {(form.file_url || form.download_url) && !pendingFile && (
+                <a href={form.download_url ?? form.file_url} target="_blank" rel="noreferrer" className="text-xs text-primary underline">Voir le fichier actuel</a>
+              )}
+            </Field>
+            <Field label="Ou URL directe">
+              <Input value={form.file_url ?? ''} onChange={e => set('file_url', e.target.value)} placeholder="https://..." />
+            </Field>
+            <Field label="Description">
+              <Textarea rows={2} value={form.description ?? ''} onChange={e => set('description', e.target.value)} />
+            </Field>
+            <Field label="Ordre">
+              <Input type="number" min={1} value={form.order ?? 1} onChange={e => set('order', parseInt(e.target.value) || 1)} className="w-24" />
+            </Field>
+            <div className="flex items-center gap-2">
+              <Switch checked={form.is_active ?? true} onCheckedChange={v => set('is_active', v)} id="doc-active" />
+              <Label htmlFor="doc-active" className="text-sm">Visible sur le site</Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
+            <Button onClick={() => save.mutate()} disabled={save.isPending || !form.title}>
+              {save.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+              {editing ? 'Enregistrer' : 'Ajouter'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 // -- GALERIE ------------------------------------------------------------------
 const GALLERY_BLANK: Partial<CmsGalleryImage> = { title: '', description: '', image_url: '', category: '', order: 1, is_active: true };
 
