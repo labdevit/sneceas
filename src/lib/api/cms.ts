@@ -169,3 +169,33 @@ export const cmsPartners = {
   remove: (id: string) => req<void>('DELETE', `/cms/partners/${id}/`),
   reorder: (ordered_ids: string[]) => req<void>('POST', '/cms/partners/reorder/', { ordered_ids }),
 };
+
+
+// -- Documents publics ---------------------------------------------------------
+
+export type CmsPublicDocument = {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  file?: File;
+  file_url: string;
+  download_url: string;
+  order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export const cmsPublicDocuments = {
+  list: () => req<CmsPublicDocument[]>("GET", "/cms/public-documents/"),
+  create: (data: Partial<CmsPublicDocument>, file?: File) => {
+    const form = buildForm(data as Record<string, unknown>, file ? { field: "file", file } : undefined);
+    return reqForm<CmsPublicDocument>("POST", "/cms/public-documents/", form);
+  },
+  update: (id: string, data: Partial<CmsPublicDocument>, file?: File) => {
+    const form = buildForm(data as Record<string, unknown>, file ? { field: "file", file } : undefined);
+    return reqForm<CmsPublicDocument>("PATCH", `/cms/public-documents/${id}/`, form);
+  },
+  remove: (id: string) => req<void>("DELETE", `/cms/public-documents/${id}/`),
+};
