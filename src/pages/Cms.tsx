@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Plus, Pencil, Trash2, Loader2, Globe, ExternalLink, Handshake, FolderOpen, FileText,
+  Plus, Pencil, Trash2, Loader2, Globe, ExternalLink, Handshake, FolderOpen, FileText, Image,
   Newspaper, CalendarDays, Users, Layers, Monitor,
   UploadCloud, Mail, CheckCircle, Clock, X,
 } from 'lucide-react';
@@ -17,8 +17,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import {
-  cmsSlides, cmsServices, cmsArticles, cmsEvents, cmsTeam, cmsContact, cmsPartners, cmsPublicDocuments,
-  type CmsSlide, type CmsService, type CmsArticle, type CmsEvent, type CmsPartner, type CmsPublicDocument,
+  cmsSlides, cmsServices, cmsArticles, cmsEvents, cmsTeam, cmsContact, cmsPartners, cmsPublicDocuments, cmsGallery,
+  type CmsSlide, type CmsService, type CmsArticle, type CmsEvent, type CmsPartner, type CmsPublicDocument, type CmsGalleryImage,
   type CmsTeamMember, type CmsContact,
 } from '@/lib/api/cms';
 
@@ -688,6 +688,7 @@ export default function Cms() {
           <TabsTrigger value="contact" className="flex items-center gap-1.5"><Mail className="w-3.5 h-3.5" />Messages</TabsTrigger>
           <TabsTrigger value="partners" className="flex items-center gap-1.5"><Handshake className="w-3.5 h-3.5" />Partenaires</TabsTrigger>
           <TabsTrigger value="documents" className="flex items-center gap-1.5"><FolderOpen className="w-3.5 h-3.5" />Documents</TabsTrigger>
+          <TabsTrigger value="gallery" className="flex items-center gap-1.5"><Image className="w-3.5 h-3.5" />Galerie</TabsTrigger>
         </TabsList>
         <Separator className="my-4" />
         <TabsContent value="slides"><SlidesTab /></TabsContent>
@@ -698,6 +699,7 @@ export default function Cms() {
         <TabsContent value="contact"><ContactTab /></TabsContent>
         <TabsContent value="partners"><PartnersTab /></TabsContent>
         <TabsContent value="documents"><DocumentsTab /></TabsContent>
+        <TabsContent value="gallery"><GalleryTab /></TabsContent>
       </Tabs>
     </div>
   );

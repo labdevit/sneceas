@@ -199,3 +199,30 @@ export const cmsPublicDocuments = {
   },
   remove: (id: string) => req<void>("DELETE", `/cms/public-documents/${id}/`),
 };
+
+export type CmsGalleryImage = {
+  id: string;
+  title: string;
+  description: string;
+  image: string;
+  image_url: string;
+  src: string;
+  category: string;
+  order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export const cmsGallery = {
+  list: () => req<CmsGalleryImage[]>("GET", "/cms/gallery/"),
+  create: (data: Partial<CmsGalleryImage>, file?: File) => {
+    const form = buildForm(data as Record<string, unknown>, file ? { field: "image", file } : undefined);
+    return reqForm<CmsGalleryImage>("POST", "/cms/gallery/", form);
+  },
+  update: (id: string, data: Partial<CmsGalleryImage>, file?: File) => {
+    const form = buildForm(data as Record<string, unknown>, file ? { field: "image", file } : undefined);
+    return reqForm<CmsGalleryImage>("PATCH", `/cms/gallery/${id}/`, form);
+  },
+  remove: (id: string) => req<void>("DELETE", `/cms/gallery/${id}/`),
+};
