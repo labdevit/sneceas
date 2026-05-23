@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Plus, Pencil, Trash2, Loader2, Globe, ExternalLink,
+  Plus, Pencil, Trash2, Loader2, Globe, ExternalLink, Handshake,
   Newspaper, CalendarDays, Users, Layers, Monitor,
   UploadCloud, Mail, CheckCircle, Clock, X,
 } from 'lucide-react';
@@ -17,8 +17,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import {
-  cmsSlides, cmsServices, cmsArticles, cmsEvents, cmsTeam, cmsContact,
-  type CmsSlide, type CmsService, type CmsArticle, type CmsEvent,
+  cmsSlides, cmsServices, cmsArticles, cmsEvents, cmsTeam, cmsContact, cmsPartners,
+  type CmsSlide, type CmsService, type CmsArticle, type CmsEvent, type CmsPartner,
   type CmsTeamMember, type CmsContact,
 } from '@/lib/api/cms';
 
@@ -686,6 +686,7 @@ export default function Cms() {
           <TabsTrigger value="events" className="flex items-center gap-1.5"><CalendarDays className="w-3.5 h-3.5" />Événements</TabsTrigger>
           <TabsTrigger value="team" className="flex items-center gap-1.5"><Users className="w-3.5 h-3.5" />Équipe</TabsTrigger>
           <TabsTrigger value="contact" className="flex items-center gap-1.5"><Mail className="w-3.5 h-3.5" />Messages</TabsTrigger>
+          <TabsTrigger value="partners" className="flex items-center gap-1.5"><Handshake className="w-3.5 h-3.5" />Partenaires</TabsTrigger>
         </TabsList>
         <Separator className="my-4" />
         <TabsContent value="slides"><SlidesTab /></TabsContent>
@@ -694,6 +695,7 @@ export default function Cms() {
         <TabsContent value="events"><EventsTab /></TabsContent>
         <TabsContent value="team"><TeamTab /></TabsContent>
         <TabsContent value="contact"><ContactTab /></TabsContent>
+        <TabsContent value="partners"><PartnersTab /></TabsContent>
       </Tabs>
     </div>
   );

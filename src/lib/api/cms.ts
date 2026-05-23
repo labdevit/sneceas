@@ -143,3 +143,29 @@ export const cmsContact = {
     req<CmsContact>(`/cms/contact/${id}/`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   remove: (id: string) => req<void>(`/cms/contact/${id}/`, { method: 'DELETE' }),
 };
+
+
+// ── Partenaires ──────────────────────────────────────────────────────────────
+
+export type CmsPartner = {
+  id: string;
+  name: string;
+  logo?: string;
+  logo_url: string;
+  logo_src: string;
+  website_url: string;
+  order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export const cmsPartners = {
+  list: () => req<CmsPartner[]>('GET', '/cms/partners/'),
+  create: (data: Partial<CmsPartner>, file?: File) =>
+    reqForm<CmsPartner>('POST', '/cms/partners/', buildForm(data as Record<string, unknown>, file ? { field: 'logo', file } : undefined)),
+  update: (id: string, data: Partial<CmsPartner>, file?: File) =>
+    reqForm<CmsPartner>('PATCH', `/cms/partners/${id}/`, buildForm(data as Record<string, unknown>, file ? { field: 'logo', file } : undefined)),
+  remove: (id: string) => req<void>('DELETE', `/cms/partners/${id}/`),
+  reorder: (ordered_ids: string[]) => req<void>('POST', '/cms/partners/reorder/', { ordered_ids }),
+};
