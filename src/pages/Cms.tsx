@@ -984,7 +984,7 @@ export default function Cms() {
           </h1>
           <p className="text-muted-foreground mt-1 text-sm">Gérez le contenu visible sur le site public du S.N.E.C.E.A.S</p>
         </div>
-        <a href="http://188.245.55.173:3001" target="_blank" rel="noopener noreferrer"
+        <a href="https://snecea.com" target="_blank" rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
           <Monitor className="w-4 h-4" />Voir le site<ExternalLink className="w-3 h-3" />
         </a>
