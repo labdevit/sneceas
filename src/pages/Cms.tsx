@@ -661,6 +661,106 @@ function ContactTab() {
   );
 }
 
+
+// -- GALERIE ------------------------------------------------------------------
+const GALLERY_BLANK: Partial<CmsGalleryImage> = { title: '', description: '', image_url: '', category: '', order: 1, is_active: true };
+
+function GalleryTab() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<CmsGalleryImage | null>(null);
+  const [form, setForm] = useState<Partial<CmsGalleryImage>>(GALLERY_BLANK);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+
+  const set = (k: keyof CmsGalleryImage, v: unknown) => setForm(f => ({ ...f, [k]: v }));
+  const inv = () => qc.invalidateQueries({ queryKey: ['cms-gallery'] });
+
+  const { data: items = [], isLoading } = useQuery({ queryKey: ['cms-gallery'], queryFn: cmsGallery.list });
+
+  const save = useMutation({
+    mutationFn: () => editing
+      ? cmsGallery.update(editing.id, form, pendingFile ?? undefined)
+      : cmsGallery.create(form, pendingFile ?? undefined),
+    onSuccess: () => { inv(); setOpen(false); setPendingFile(null); toast({ title: editing ? 'Photo modifiee' : 'Photo ajoutee' }); },
+    onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
+  });
+
+  const del = useMutation({
+    mutationFn: (id: string) => cmsGallery.remove(id),
+    onSuccess: () => { inv(); toast({ title: 'Photo supprimee' }); },
+    onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
+  });
+
+  function openNew() { setEditing(null); setForm(GALLERY_BLANK); setPendingFile(null); setOpen(true); }
+  function openEdit(p: CmsGalleryImage) { setEditing(p); setForm(p); setPendingFile(null); setOpen(true); }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">{items.length} photo{items.length !== 1 ? 's' : ''}</p>
+        <Button size="sm" onClick={openNew}><Plus className="w-3.5 h-3.5 mr-1" />Ajouter</Button>
+      </div>
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="animate-spin w-5 h-5 text-muted-foreground" /></div>
+      ) : items.length === 0 ? (
+        <div className="text-center py-10 text-muted-foreground text-sm">Aucune photo. Cliquez sur Ajouter.</div>
+      ) : (
+        <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
+          {items.map(p => (
+            <div key={p.id} className="group relative aspect-square rounded-xl overflow-hidden border bg-muted">
+              {p.src
+                ? <img src={p.src} alt={p.title} className="w-full h-full object-cover" />
+                : <div className="w-full h-full flex items-center justify-center"><Image className="w-8 h-8 text-muted-foreground" /></div>}
+              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+                <p className="text-white text-xs font-medium text-center px-2 truncate w-full">{p.title}</p>
+                <div className="flex gap-1">
+                  <Button size="icon" variant="secondary" className="w-7 h-7" onClick={() => openEdit(p)}><Pencil className="w-3.5 h-3.5" /></Button>
+                  <Button size="icon" variant="destructive" className="w-7 h-7" onClick={() => { if (confirm('Supprimer ?')) del.mutate(p.id); }}><Trash2 className="w-3.5 h-3.5" /></Button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={open} onOpenChange={o => { if (!o) { setOpen(false); setPendingFile(null); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>{editing ? 'Modifier la photo' : 'Ajouter une photo'}</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <Field label="Titre *">
+              <Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} placeholder="Assemblee Generale 2024" />
+            </Field>
+            <Field label="Image">
+              <ImageDropzone currentUrl={form.image_url ?? ''} onFileChange={f => setPendingFile(f)} onUrlChange={u => set('image_url', u)} />
+            </Field>
+            <Field label="Categorie">
+              <Input value={form.category ?? ''} onChange={e => set('category', e.target.value)} placeholder="Evenements, Reunions, Activites..." />
+            </Field>
+            <Field label="Description">
+              <Textarea rows={2} value={form.description ?? ''} onChange={e => set('description', e.target.value)} />
+            </Field>
+            <Field label="Ordre">
+              <Input type="number" min={1} value={form.order ?? 1} onChange={e => set('order', parseInt(e.target.value) || 1)} className="w-24" />
+            </Field>
+            <div className="flex items-center gap-2">
+              <Switch checked={form.is_active ?? true} onCheckedChange={v => set('is_active', v)} id="gal-active" />
+              <Label htmlFor="gal-active" className="text-sm">Visible sur le site</Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
+            <Button onClick={() => save.mutate()} disabled={save.isPending || !form.title}>
+              {save.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+              {editing ? 'Enregistrer' : 'Ajouter'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 // ── PAGE PRINCIPALE ──────────────────────────────────────────────────
 export default function Cms() {
   return (
