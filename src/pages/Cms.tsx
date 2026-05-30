@@ -37,11 +37,10 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 // ── Image Dropzone ───────────────────────────────────────────────────
 function ImageDropzone({
-  currentUrl, onFileChange, onUrlChange,
+  currentUrl, onFileChange,
 }: {
   currentUrl: string;
   onFileChange: (file: File | null) => void;
-  onUrlChange: (url: string) => void;
 }) {
   const [dragging, setDragging] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
@@ -63,45 +62,34 @@ function ImageDropzone({
   const display = preview || currentUrl;
 
   return (
-    <div className="space-y-2">
-      <div
-        className={`relative rounded-xl border-2 border-dashed transition-colors cursor-pointer overflow-hidden ${dragging ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/40'}`}
-        style={{ minHeight: '110px' }}
-        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
-        onClick={() => inputRef.current?.click()}
-      >
-        <input ref={inputRef} type="file" accept="image/*" className="hidden"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
-        {display ? (
-          <>
-            <img src={display} alt="" className="w-full max-h-36 object-cover" />
-            <div className="absolute inset-0 bg-black/0 hover:bg-black/30 transition-colors flex items-center justify-center">
-              <p className="text-white text-xs font-medium opacity-0 hover:opacity-100 transition-opacity">Changer l'image</p>
-            </div>
-            {preview && (
-              <button
-                className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80"
-                onClick={(e) => { e.stopPropagation(); clearFile(); }}
-              ><X className="w-3 h-3" /></button>
-            )}
-          </>
-        ) : (
-          <div className="flex flex-col items-center justify-center gap-2 py-8 text-muted-foreground">
-            <UploadCloud className="w-7 h-7" />
-            <p className="text-sm">Glissez une image ou cliquez</p>
-            <p className="text-xs opacity-50">PNG, JPG, WebP</p>
+    <div
+      className={`relative rounded-xl border-2 border-dashed transition-colors cursor-pointer overflow-hidden ${dragging ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/40'}`}
+      style={{ minHeight: '110px' }}
+      onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+      onClick={() => inputRef.current?.click()}
+    >
+      <input ref={inputRef} type="file" accept="image/*" className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+      {display ? (
+        <>
+          <img src={display} alt="" className="w-full max-h-36 object-cover" />
+          <div className="absolute inset-0 bg-black/0 hover:bg-black/30 transition-colors flex items-center justify-center">
+            <p className="text-white text-xs font-medium opacity-0 hover:opacity-100 transition-opacity">Changer l'image</p>
           </div>
-        )}
-      </div>
-      <Input
-        value={preview ? '' : currentUrl}
-        onChange={(e) => { clearFile(); onUrlChange(e.target.value); }}
-        placeholder="ou collez une URL d'image..."
-        className="text-xs h-8"
-        onClick={(e) => e.stopPropagation()}
-      />
+          <button
+            className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80"
+            onClick={(e) => { e.stopPropagation(); clearFile(); }}
+          ><X className="w-3 h-3" /></button>
+        </>
+      ) : (
+        <div className="flex flex-col items-center justify-center gap-2 py-8 text-muted-foreground">
+          <UploadCloud className="w-7 h-7" />
+          <p className="text-sm">Glissez une image ou cliquez</p>
+          <p className="text-xs opacity-50">PNG, JPG, WebP — max 5 Mo</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -164,7 +152,7 @@ function SlidesTab() {
           <DialogHeader><DialogTitle>{editing ? 'Modifier' : 'Nouveau'} slide</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <Field label="Image de fond">
-              <ImageDropzone currentUrl={form.background ?? form.image_url ?? ''} onFileChange={setImgFile} onUrlChange={v => set('image_url', v)} />
+              <ImageDropzone currentUrl={form.background ?? form.image_url ?? ''} onFileChange={setImgFile} />
             </Field>
             <Field label="Titre *"><Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} /></Field>
             <Field label="Sous-titre"><Textarea rows={2} value={form.subtitle ?? ''} onChange={e => set('subtitle', e.target.value)} /></Field>
@@ -334,7 +322,7 @@ function ArticlesTab() {
           <DialogHeader><DialogTitle>{editing ? 'Modifier' : 'Nouvel'} article</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <Field label="Image de couverture">
-              <ImageDropzone currentUrl={form.cover ?? form.cover_image_url ?? ''} onFileChange={setImgFile} onUrlChange={v => set('cover_image_url', v)} />
+              <ImageDropzone currentUrl={form.cover ?? form.cover_image_url ?? ''} onFileChange={setImgFile} />
             </Field>
             <Field label="Titre *"><Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} /></Field>
             {!editing && <Field label="Slug"><Input value={form.slug || slugify(form.title ?? '')} onChange={e => set('slug', e.target.value)} /></Field>}
@@ -442,7 +430,7 @@ function EventsTab() {
           <DialogHeader><DialogTitle>{editing ? 'Modifier' : 'Nouvel'} événement</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <Field label="Image">
-              <ImageDropzone currentUrl={form.cover ?? form.cover_image_url ?? ''} onFileChange={setImgFile} onUrlChange={v => set('cover_image_url', v)} />
+              <ImageDropzone currentUrl={form.cover ?? form.cover_image_url ?? ''} onFileChange={setImgFile} />
             </Field>
             <Field label="Titre *"><Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} /></Field>
             {!editing && <Field label="Slug"><Input value={form.slug || slugify(form.title ?? '')} onChange={e => set('slug', e.target.value)} /></Field>}
@@ -545,7 +533,7 @@ function TeamTab() {
           <DialogHeader><DialogTitle>{editing ? 'Modifier' : 'Nouveau'} membre</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <Field label="Photo">
-              <ImageDropzone currentUrl={form.avatar ?? form.photo_url ?? ''} onFileChange={setImgFile} onUrlChange={v => set('photo_url', v)} />
+              <ImageDropzone currentUrl={form.avatar ?? form.photo_url ?? ''} onFileChange={setImgFile} />
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Nom complet *"><Input value={form.full_name ?? ''} onChange={e => set('full_name', e.target.value)} /></Field>
@@ -730,7 +718,7 @@ function PartnersTab() {
               <Input value={form.name ?? ''} onChange={e => set('name', e.target.value)} placeholder="Nom du partenaire" />
             </Field>
             <Field label="Logo">
-              <ImageDropzone currentUrl={form.logo_url ?? ''} onFileChange={f => setPendingFile(f)} onUrlChange={u => set('logo_url', u)} />
+              <ImageDropzone currentUrl={form.logo_url ?? ''} onFileChange={f => setPendingFile(f)} />
             </Field>
             <Field label="Site web">
               <Input value={form.website_url ?? ''} onChange={e => set('website_url', e.target.value)} placeholder="https://..." />
@@ -944,7 +932,7 @@ function GalleryTab() {
               <Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} placeholder="Assemblee Generale 2024" />
             </Field>
             <Field label="Image">
-              <ImageDropzone currentUrl={form.image_url ?? ''} onFileChange={f => setPendingFile(f)} onUrlChange={u => set('image_url', u)} />
+              <ImageDropzone currentUrl={form.image_url ?? ''} onFileChange={f => setPendingFile(f)} />
             </Field>
             <Field label="Categorie">
               <Input value={form.category ?? ''} onChange={e => set('category', e.target.value)} placeholder="Evenements, Reunions, Activites..." />
