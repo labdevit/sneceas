@@ -35,10 +35,12 @@ async function reqForm<T>(method: 'POST' | 'PATCH', path: string, form: FormData
   return res.json();
 }
 
-export function buildForm(data: Record<string, unknown>, file?: { field: string; file: File }): FormData {
+export function buildForm(data: Record<string, unknown>, file?: { field: string; file: File; clearField?: string }): FormData {
   const fd = new FormData();
   Object.entries(data).forEach(([k, v]) => {
-    if (v !== null && v !== undefined) fd.append(k, String(v));
+    if (file && k === file.field) return;
+    if (file?.clearField && k === file.clearField) { fd.append(k, ''); return; }
+    if (v !== null && v !== undefined && v !== '') fd.append(k, String(v));
   });
   if (file) fd.append(file.field, file.file);
   return fd;
@@ -80,11 +82,11 @@ export const cmsSlides = {
   list: () => req<CmsSlide[]>('/cms/slides/'),
   create: (data: Partial<CmsSlide>, file?: File) =>
     file
-      ? reqForm<CmsSlide>('POST', '/cms/slides/', buildForm(data as Record<string, unknown>, { field: 'image', file }))
+      ? reqForm<CmsSlide>('POST', '/cms/slides/', buildForm(data as Record<string, unknown>, { field: 'image', file, clearField: 'image_url' }))
       : req<CmsSlide>('/cms/slides/', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: string, data: Partial<CmsSlide>, file?: File) =>
     file
-      ? reqForm<CmsSlide>('PATCH', `/cms/slides/${id}/`, buildForm(data as Record<string, unknown>, { field: 'image', file }))
+      ? reqForm<CmsSlide>('PATCH', `/cms/slides/${id}/`, buildForm(data as Record<string, unknown>, { field: 'image', file, clearField: 'image_url' }))
       : req<CmsSlide>(`/cms/slides/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
   remove: (id: string) => req<void>(`/cms/slides/${id}/`, { method: 'DELETE' }),
 };
@@ -102,11 +104,11 @@ export const cmsArticles = {
   list: () => req<CmsArticle[]>('/cms/articles/'),
   create: (data: Partial<CmsArticle>, file?: File) =>
     file
-      ? reqForm<CmsArticle>('POST', '/cms/articles/', buildForm(data as Record<string, unknown>, { field: 'cover_image', file }))
+      ? reqForm<CmsArticle>('POST', '/cms/articles/', buildForm(data as Record<string, unknown>, { field: 'cover_image', file, clearField: 'cover_image_url' }))
       : req<CmsArticle>('/cms/articles/', { method: 'POST', body: JSON.stringify(data) }),
   update: (slug: string, data: Partial<CmsArticle>, file?: File) =>
     file
-      ? reqForm<CmsArticle>('PATCH', `/cms/articles/${slug}/`, buildForm(data as Record<string, unknown>, { field: 'cover_image', file }))
+      ? reqForm<CmsArticle>('PATCH', `/cms/articles/${slug}/`, buildForm(data as Record<string, unknown>, { field: 'cover_image', file, clearField: 'cover_image_url' }))
       : req<CmsArticle>(`/cms/articles/${slug}/`, { method: 'PATCH', body: JSON.stringify(data) }),
   remove: (slug: string) => req<void>(`/cms/articles/${slug}/`, { method: 'DELETE' }),
 };
@@ -115,11 +117,11 @@ export const cmsEvents = {
   list: () => req<CmsEvent[]>('/cms/events/'),
   create: (data: Partial<CmsEvent>, file?: File) =>
     file
-      ? reqForm<CmsEvent>('POST', '/cms/events/', buildForm(data as Record<string, unknown>, { field: 'cover_image', file }))
+      ? reqForm<CmsEvent>('POST', '/cms/events/', buildForm(data as Record<string, unknown>, { field: 'cover_image', file, clearField: 'cover_image_url' }))
       : req<CmsEvent>('/cms/events/', { method: 'POST', body: JSON.stringify(data) }),
   update: (slug: string, data: Partial<CmsEvent>, file?: File) =>
     file
-      ? reqForm<CmsEvent>('PATCH', `/cms/events/${slug}/`, buildForm(data as Record<string, unknown>, { field: 'cover_image', file }))
+      ? reqForm<CmsEvent>('PATCH', `/cms/events/${slug}/`, buildForm(data as Record<string, unknown>, { field: 'cover_image', file, clearField: 'cover_image_url' }))
       : req<CmsEvent>(`/cms/events/${slug}/`, { method: 'PATCH', body: JSON.stringify(data) }),
   remove: (slug: string) => req<void>(`/cms/events/${slug}/`, { method: 'DELETE' }),
 };
@@ -128,11 +130,11 @@ export const cmsTeam = {
   list: () => req<CmsTeamMember[]>('/cms/team/'),
   create: (data: Partial<CmsTeamMember>, file?: File) =>
     file
-      ? reqForm<CmsTeamMember>('POST', '/cms/team/', buildForm(data as Record<string, unknown>, { field: 'photo', file }))
+      ? reqForm<CmsTeamMember>('POST', '/cms/team/', buildForm(data as Record<string, unknown>, { field: 'photo', file, clearField: 'photo_url' }))
       : req<CmsTeamMember>('/cms/team/', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: string, data: Partial<CmsTeamMember>, file?: File) =>
     file
-      ? reqForm<CmsTeamMember>('PATCH', `/cms/team/${id}/`, buildForm(data as Record<string, unknown>, { field: 'photo', file }))
+      ? reqForm<CmsTeamMember>('PATCH', `/cms/team/${id}/`, buildForm(data as Record<string, unknown>, { field: 'photo', file, clearField: 'photo_url' }))
       : req<CmsTeamMember>(`/cms/team/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
   remove: (id: string) => req<void>(`/cms/team/${id}/`, { method: 'DELETE' }),
 };
@@ -163,9 +165,9 @@ export type CmsPartner = {
 export const cmsPartners = {
   list: () => req<CmsPartner[]>('GET', '/cms/partners/'),
   create: (data: Partial<CmsPartner>, file?: File) =>
-    reqForm<CmsPartner>('POST', '/cms/partners/', buildForm(data as Record<string, unknown>, file ? { field: 'logo', file } : undefined)),
+    reqForm<CmsPartner>('POST', '/cms/partners/', buildForm(data as Record<string, unknown>, file ? { field: 'logo', file, clearField: 'logo_url' } : undefined)),
   update: (id: string, data: Partial<CmsPartner>, file?: File) =>
-    reqForm<CmsPartner>('PATCH', `/cms/partners/${id}/`, buildForm(data as Record<string, unknown>, file ? { field: 'logo', file } : undefined)),
+    reqForm<CmsPartner>('PATCH', `/cms/partners/${id}/`, buildForm(data as Record<string, unknown>, file ? { field: 'logo', file, clearField: 'logo_url' } : undefined)),
   remove: (id: string) => req<void>('DELETE', `/cms/partners/${id}/`),
   reorder: (ordered_ids: string[]) => req<void>('POST', '/cms/partners/reorder/', { ordered_ids }),
 };
@@ -217,11 +219,11 @@ export type CmsGalleryImage = {
 export const cmsGallery = {
   list: () => req<CmsGalleryImage[]>("GET", "/cms/gallery/"),
   create: (data: Partial<CmsGalleryImage>, file?: File) => {
-    const form = buildForm(data as Record<string, unknown>, file ? { field: "image", file } : undefined);
+    const form = buildForm(data as Record<string, unknown>, file ? { field: "image", file, clearField: "image_url" } : undefined);
     return reqForm<CmsGalleryImage>("POST", "/cms/gallery/", form);
   },
   update: (id: string, data: Partial<CmsGalleryImage>, file?: File) => {
-    const form = buildForm(data as Record<string, unknown>, file ? { field: "image", file } : undefined);
+    const form = buildForm(data as Record<string, unknown>, file ? { field: "image", file, clearField: "image_url" } : undefined);
     return reqForm<CmsGalleryImage>("PATCH", `/cms/gallery/${id}/`, form);
   },
   remove: (id: string) => req<void>("DELETE", `/cms/gallery/${id}/`),
