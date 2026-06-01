@@ -38,7 +38,7 @@ async function reqForm<T>(method: 'POST' | 'PATCH', path: string, form: FormData
 export function buildForm(data: Record<string, unknown>, file?: { field: string; file: File }): FormData {
   const fd = new FormData();
   Object.entries(data).forEach(([k, v]) => {
-    if (v !== null && v !== undefined && v !== '') fd.append(k, String(v));
+    if (v !== null && v !== undefined) fd.append(k, String(v));
   });
   if (file) fd.append(file.field, file.file);
   return fd;
