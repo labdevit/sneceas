@@ -152,7 +152,7 @@ function SlidesTab() {
           <DialogHeader><DialogTitle>{editing ? 'Modifier' : 'Nouveau'} slide</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <Field label="Image de fond">
-              <ImageDropzone currentUrl={form.background ?? form.image_url ?? ''} onFileChange={setImgFile} />
+              <ImageDropzone currentUrl={form.background ?? form.image_url ?? ''} onFileChange={f => { setImgFile(f); if (f) set('image_url', ''); }} />
             </Field>
             <Field label="Titre *"><Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} /></Field>
             <Field label="Sous-titre"><Textarea rows={2} value={form.subtitle ?? ''} onChange={e => set('subtitle', e.target.value)} /></Field>
@@ -322,7 +322,7 @@ function ArticlesTab() {
           <DialogHeader><DialogTitle>{editing ? 'Modifier' : 'Nouvel'} article</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <Field label="Image de couverture">
-              <ImageDropzone currentUrl={form.cover ?? form.cover_image_url ?? ''} onFileChange={setImgFile} />
+              <ImageDropzone currentUrl={form.cover ?? form.cover_image_url ?? ''} onFileChange={f => { setImgFile(f); if (f) set('cover_image_url', ''); }} />
             </Field>
             <Field label="Titre *"><Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} /></Field>
             {!editing && <Field label="Slug"><Input value={form.slug || slugify(form.title ?? '')} onChange={e => set('slug', e.target.value)} /></Field>}
@@ -430,7 +430,7 @@ function EventsTab() {
           <DialogHeader><DialogTitle>{editing ? 'Modifier' : 'Nouvel'} événement</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <Field label="Image">
-              <ImageDropzone currentUrl={form.cover ?? form.cover_image_url ?? ''} onFileChange={setImgFile} />
+              <ImageDropzone currentUrl={form.cover ?? form.cover_image_url ?? ''} onFileChange={f => { setImgFile(f); if (f) set('cover_image_url', ''); }} />
             </Field>
             <Field label="Titre *"><Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} /></Field>
             {!editing && <Field label="Slug"><Input value={form.slug || slugify(form.title ?? '')} onChange={e => set('slug', e.target.value)} /></Field>}
@@ -533,7 +533,7 @@ function TeamTab() {
           <DialogHeader><DialogTitle>{editing ? 'Modifier' : 'Nouveau'} membre</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <Field label="Photo">
-              <ImageDropzone currentUrl={form.avatar ?? form.photo_url ?? ''} onFileChange={setImgFile} />
+              <ImageDropzone currentUrl={form.avatar ?? form.photo_url ?? ''} onFileChange={f => { setImgFile(f); if (f) set('photo_url', ''); }} />
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Nom complet *"><Input value={form.full_name ?? ''} onChange={e => set('full_name', e.target.value)} /></Field>
@@ -718,7 +718,7 @@ function PartnersTab() {
               <Input value={form.name ?? ''} onChange={e => set('name', e.target.value)} placeholder="Nom du partenaire" />
             </Field>
             <Field label="Logo">
-              <ImageDropzone currentUrl={form.logo_url ?? ''} onFileChange={f => setPendingFile(f)} />
+              <ImageDropzone currentUrl={form.logo_src ?? form.logo_url ?? ''} onFileChange={f => { setPendingFile(f); if (f) set('logo_url', ''); }} />
             </Field>
             <Field label="Site web">
               <Input value={form.website_url ?? ''} onChange={e => set('website_url', e.target.value)} placeholder="https://..." />
@@ -932,7 +932,7 @@ function GalleryTab() {
               <Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} placeholder="Assemblee Generale 2024" />
             </Field>
             <Field label="Image">
-              <ImageDropzone currentUrl={form.image_url ?? ''} onFileChange={f => setPendingFile(f)} />
+              <ImageDropzone currentUrl={form.src ?? form.image_url ?? ''} onFileChange={f => { setPendingFile(f); if (f) set('image_url', ''); }} />
             </Field>
             <Field label="Categorie">
               <Input value={form.category ?? ''} onChange={e => set('category', e.target.value)} placeholder="Evenements, Reunions, Activites..." />
