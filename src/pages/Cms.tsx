@@ -1,10 +1,17 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Pencil, Trash2, Loader2, Globe, ExternalLink, Handshake, FolderOpen, FileText, Image,
   Newspaper, CalendarDays, Users, Layers, Monitor,
-  UploadCloud, Mail, CheckCircle, Clock, X,
+  UploadCloud, Mail, CheckCircle, Clock, X, GripVertical, Video,
 } from 'lucide-react';
+import {
+  DndContext, DragEndEvent, PointerSensor, useSensor, useSensors, closestCenter,
+} from '@dnd-kit/core';
+import {
+  SortableContext, useSortable, arrayMove, verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -13,8 +20,8 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { WysiwygEditor } from '@/components/ui/wysiwyg';
 import { useToast } from '@/hooks/use-toast';
 import {
   cmsSlides, cmsServices, cmsArticles, cmsEvents, cmsTeam, cmsContact, cmsPartners, cmsPublicDocuments, cmsGallery,
@@ -35,21 +42,26 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-// ── Image Dropzone ───────────────────────────────────────────────────
-function ImageDropzone({
-  currentUrl, onFileChange,
+// ── Media Dropzone (images + vidéos) ─────────────────────────────────
+function MediaDropzone({
+  currentUrl,
+  onFileChange,
+  acceptVideo = false,
 }: {
   currentUrl: string;
   onFileChange: (file: File | null) => void;
+  acceptVideo?: boolean;
 }) {
   const [dragging, setDragging] = useState(false);
-  const [preview, setPreview] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ url: string; type: 'image' | 'video' } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   function handleFile(file: File) {
-    if (!file.type.startsWith('image/')) return;
+    const isVideo = file.type.startsWith('video/');
+    const isImage = file.type.startsWith('image/');
+    if (!isImage && !(acceptVideo && isVideo)) return;
     const url = URL.createObjectURL(file);
-    setPreview(url);
+    setPreview({ url, type: isVideo ? 'video' : 'image' });
     onFileChange(file);
   }
 
@@ -59,7 +71,11 @@ function ImageDropzone({
     if (inputRef.current) inputRef.current.value = '';
   }
 
-  const display = preview || currentUrl;
+  const isVideo = (url: string) => /\.(mp4|webm|ogg|mov)(\?|$)/i.test(url);
+  const displayUrl = preview?.url || currentUrl;
+  const displayIsVideo = preview ? preview.type === 'video' : isVideo(currentUrl);
+
+  const accept = acceptVideo ? 'image/*,video/*' : 'image/*';
 
   return (
     <div
@@ -70,13 +86,17 @@ function ImageDropzone({
       onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
       onClick={() => inputRef.current?.click()}
     >
-      <input ref={inputRef} type="file" accept="image/*" className="hidden"
+      <input ref={inputRef} type="file" accept={accept} className="hidden"
         onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
-      {display ? (
+      {displayUrl ? (
         <>
-          <img src={display} alt="" className="w-full max-h-36 object-cover" />
+          {displayIsVideo ? (
+            <video src={displayUrl} className="w-full max-h-36 object-cover" muted playsInline />
+          ) : (
+            <img src={displayUrl} alt="" className="w-full max-h-36 object-cover" />
+          )}
           <div className="absolute inset-0 bg-black/0 hover:bg-black/30 transition-colors flex items-center justify-center">
-            <p className="text-white text-xs font-medium opacity-0 hover:opacity-100 transition-opacity">Changer l'image</p>
+            <p className="text-white text-xs font-medium opacity-0 hover:opacity-100 transition-opacity">Changer le média</p>
           </div>
           <button
             className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80"
@@ -85,11 +105,72 @@ function ImageDropzone({
         </>
       ) : (
         <div className="flex flex-col items-center justify-center gap-2 py-8 text-muted-foreground">
-          <UploadCloud className="w-7 h-7" />
-          <p className="text-sm">Glissez une image ou cliquez</p>
-          <p className="text-xs opacity-50">PNG, JPG, WebP — max 5 Mo</p>
+          {acceptVideo ? <Video className="w-7 h-7" /> : <UploadCloud className="w-7 h-7" />}
+          <p className="text-sm">Glissez {acceptVideo ? 'une image ou vidéo' : 'une image'} ou cliquez</p>
+          <p className="text-xs opacity-50">{acceptVideo ? 'PNG, JPG, WebP, MP4, WebM' : 'PNG, JPG, WebP'} — max 20 Mo</p>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Sortable row wrapper ──────────────────────────────────────────────
+function SortableRow({
+  id,
+  children,
+}: {
+  id: string;
+  children: (dragHandle: React.ReactNode) => React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
+  return (
+    <div ref={setNodeRef} style={style}>
+      {children(
+        <button
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground p-1 touch-none"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <GripVertical className="w-4 h-4" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── Form panel (inline, no Dialog) ──────────────────────────────────
+function FormPanel({
+  title,
+  onClose,
+  onSave,
+  isSaving,
+  canSave,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  onSave: () => void;
+  isSaving: boolean;
+  canSave: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border bg-card shadow-sm h-fit sticky top-4">
+      <div className="flex items-center justify-between px-5 py-3 border-b">
+        <h3 className="font-semibold text-sm">{title}</h3>
+        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}><X className="w-4 h-4" /></Button>
+      </div>
+      <div className="px-5 py-4 space-y-4 max-h-[calc(100vh-200px)] overflow-y-auto">
+        {children}
+      </div>
+      <div className="flex justify-end gap-2 px-5 py-3 border-t">
+        <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
+        <Button size="sm" onClick={onSave} disabled={isSaving || !canSave}>
+          {isSaving && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}Sauvegarder
+        </Button>
+      </div>
     </div>
   );
 }
@@ -100,19 +181,25 @@ const SLIDE_BLANK: Partial<CmsSlide> = { title: '', subtitle: '', badge_text: ''
 function SlidesTab() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CmsSlide | null>(null);
+  const [isNew, setIsNew] = useState(false);
   const [form, setForm] = useState<Partial<CmsSlide>>(SLIDE_BLANK);
   const [imgFile, setImgFile] = useState<File | null>(null);
+  const [items, setItems] = useState<CmsSlide[]>([]);
 
   const { data: slides = [], isLoading } = useQuery({ queryKey: ['cms-slides'], queryFn: cmsSlides.list });
   const inv = () => qc.invalidateQueries({ queryKey: ['cms-slides'] });
+
+  useEffect(() => { setItems([...slides].sort((a, b) => a.order - b.order)); }, [slides]);
+
+  const open = isNew || editing !== null;
+  const sensors = useSensors(useSensor(PointerSensor));
 
   const save = useMutation({
     mutationFn: () => editing
       ? cmsSlides.update(editing.id, form, imgFile ?? undefined)
       : cmsSlides.create(form, imgFile ?? undefined),
-    onSuccess: () => { inv(); setOpen(false); toast({ title: 'Slide sauvegardé' }); },
+    onSuccess: () => { inv(); closeForm(); toast({ title: 'Slide sauvegardé' }); },
     onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
   });
   const del = useMutation({
@@ -121,60 +208,80 @@ function SlidesTab() {
     onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
   });
 
-  function openCreate() { setEditing(null); setForm(SLIDE_BLANK); setImgFile(null); setOpen(true); }
-  function openEdit(s: CmsSlide) { setEditing(s); setForm(s); setImgFile(null); setOpen(true); }
+  function openCreate() { setEditing(null); setIsNew(true); setForm({ ...SLIDE_BLANK, order: items.length + 1 }); setImgFile(null); }
+  function openEdit(s: CmsSlide) { setEditing(s); setIsNew(false); setForm(s); setImgFile(null); }
+  function closeForm() { setEditing(null); setIsNew(false); }
   function set(k: keyof CmsSlide, v: unknown) { setForm(f => ({ ...f, [k]: v })); }
 
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = items.findIndex(i => i.id === active.id);
+    const newIdx = items.findIndex(i => i.id === over.id);
+    const reordered = arrayMove(items, oldIdx, newIdx).map((item, idx) => ({ ...item, order: idx + 1 }));
+    setItems(reordered);
+    reordered.forEach(item => { if (slides.find(s => s.id === item.id)?.order !== item.order) cmsSlides.update(item.id, { order: item.order }); });
+  }
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{slides.length} slide{slides.length !== 1 ? 's' : ''} dans le carrousel</p>
-        <Button size="sm" onClick={openCreate}><Plus className="w-4 h-4 mr-1" />Ajouter</Button>
+    <div className={`grid gap-6 ${open ? 'lg:grid-cols-[1fr_400px]' : ''}`}>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">{items.length} slide{items.length !== 1 ? 's' : ''} dans le carrousel</p>
+          <Button size="sm" onClick={openCreate}><Plus className="w-4 h-4 mr-1" />Ajouter</Button>
+        </div>
+        {isLoading ? <div className="flex justify-center py-8"><Loader2 className="animate-spin w-5 h-5 text-muted-foreground" /></div>
+          : items.length === 0 ? <div className="text-center py-10 text-muted-foreground text-sm">Aucun slide.</div>
+          : (
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
+                <div className="space-y-2">
+                  {items.map(s => (
+                    <SortableRow key={s.id} id={s.id}>
+                      {(dragHandle) => (
+                        <div className={`flex items-center gap-2 p-3 rounded-lg border bg-card transition-colors ${editing?.id === s.id ? 'border-primary/40 bg-primary/5' : 'hover:bg-accent/30'}`}>
+                          {dragHandle}
+                          <span className="w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center shrink-0">{s.order}</span>
+                          {s.background && <img src={s.background} alt="" className="w-14 h-9 object-cover rounded shrink-0" />}
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-sm truncate">{s.title}</p>
+                            {s.badge_text && <p className="text-xs text-muted-foreground truncate">{s.badge_text}</p>}
+                          </div>
+                          <div className="flex gap-1 shrink-0">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(s)}><Pencil className="w-3.5 h-3.5" /></Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => { if (confirm('Supprimer ?')) del.mutate(s.id); }}><Trash2 className="w-3.5 h-3.5" /></Button>
+                          </div>
+                        </div>
+                      )}
+                    </SortableRow>
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+          )}
       </div>
-      {isLoading ? <div className="flex justify-center py-8"><Loader2 className="animate-spin w-5 h-5 text-muted-foreground" /></div>
-        : slides.length === 0 ? <div className="text-center py-10 text-muted-foreground text-sm">Aucun slide.</div>
-        : <div className="space-y-2">{slides.map(s => (
-          <div key={s.id} className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/30 transition-colors">
-            <span className="w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center shrink-0">{s.order}</span>
-            {s.background && <img src={s.background} alt="" className="w-14 h-9 object-cover rounded shrink-0" />}
-            <div className="min-w-0 flex-1">
-              <p className="font-medium text-sm truncate">{s.title}</p>
-              {s.badge_text && <p className="text-xs text-muted-foreground truncate">{s.badge_text}</p>}
-            </div>
-            <div className="flex gap-1 shrink-0">
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(s)}><Pencil className="w-3.5 h-3.5" /></Button>
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => { if (confirm('Supprimer ?')) del.mutate(s.id); }}><Trash2 className="w-3.5 h-3.5" /></Button>
-            </div>
+
+      {open && (
+        <FormPanel title={editing ? 'Modifier le slide' : 'Nouveau slide'} onClose={closeForm} onSave={() => save.mutate()} isSaving={save.isPending} canSave={!!form.title}>
+          <Field label="Image de fond">
+            <MediaDropzone currentUrl={form.background ?? form.image_url ?? ''} onFileChange={f => { setImgFile(f); if (f) set('image_url', ''); }} acceptVideo />
+          </Field>
+          <Field label="Titre *"><Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} /></Field>
+          <Field label="Sous-titre">
+            <WysiwygEditor key={editing?.id ?? 'new-slide'} value={form.subtitle ?? ''} onChange={v => set('subtitle', v)} placeholder="Sous-titre du slide…" minHeight="80px" />
+          </Field>
+          <Field label="Badge"><Input value={form.badge_text ?? ''} onChange={e => set('badge_text', e.target.value)} placeholder="Syndicat National…" /></Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Bouton 1"><Input value={form.cta_label ?? ''} onChange={e => set('cta_label', e.target.value)} placeholder="Nous rejoindre" /></Field>
+            <Field label="Lien 1"><Input value={form.cta_url ?? ''} onChange={e => set('cta_url', e.target.value)} placeholder="/contact" /></Field>
           </div>
-        ))}</div>}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editing ? 'Modifier' : 'Nouveau'} slide</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
-            <Field label="Image de fond">
-              <ImageDropzone currentUrl={form.background ?? form.image_url ?? ''} onFileChange={f => { setImgFile(f); if (f) set('image_url', ''); }} />
-            </Field>
-            <Field label="Titre *"><Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} /></Field>
-            <Field label="Sous-titre"><Textarea rows={2} value={form.subtitle ?? ''} onChange={e => set('subtitle', e.target.value)} /></Field>
-            <Field label="Badge"><Input value={form.badge_text ?? ''} onChange={e => set('badge_text', e.target.value)} placeholder="Syndicat National..." /></Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Bouton 1"><Input value={form.cta_label ?? ''} onChange={e => set('cta_label', e.target.value)} placeholder="Nous rejoindre" /></Field>
-              <Field label="Lien 1"><Input value={form.cta_url ?? ''} onChange={e => set('cta_url', e.target.value)} placeholder="/contact" /></Field>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Bouton 2"><Input value={form.cta_label_secondary ?? ''} onChange={e => set('cta_label_secondary', e.target.value)} placeholder="Nos services" /></Field>
-              <Field label="Lien 2"><Input value={form.cta_url_secondary ?? ''} onChange={e => set('cta_url_secondary', e.target.value)} placeholder="/services" /></Field>
-            </div>
-            <Field label="Ordre"><Input type="number" min={1} value={form.order ?? 1} onChange={e => set('order', parseInt(e.target.value) || 1)} className="w-24" /></Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Bouton 2"><Input value={form.cta_label_secondary ?? ''} onChange={e => set('cta_label_secondary', e.target.value)} placeholder="Nos services" /></Field>
+            <Field label="Lien 2"><Input value={form.cta_url_secondary ?? ''} onChange={e => set('cta_url_secondary', e.target.value)} placeholder="/services" /></Field>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
-            <Button onClick={() => save.mutate()} disabled={save.isPending || !form.title}>
-              {save.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}Sauvegarder
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          <Field label="Ordre"><Input type="number" min={1} value={form.order ?? 1} onChange={e => set('order', parseInt(e.target.value) || 1)} className="w-24" /></Field>
+        </FormPanel>
+      )}
     </div>
   );
 }
@@ -186,18 +293,24 @@ const SVC_BLANK: Partial<CmsService> = { title: '', slug: '', icon: 'Shield', sh
 function ServicesTab() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CmsService | null>(null);
+  const [isNew, setIsNew] = useState(false);
   const [form, setForm] = useState<Partial<CmsService>>(SVC_BLANK);
+  const [items, setItems] = useState<CmsService[]>([]);
 
   const { data: services = [], isLoading } = useQuery({ queryKey: ['cms-services'], queryFn: cmsServices.list });
   const inv = () => qc.invalidateQueries({ queryKey: ['cms-services'] });
+
+  useEffect(() => { setItems([...services].sort((a, b) => a.order - b.order)); }, [services]);
+
+  const open = isNew || editing !== null;
+  const sensors = useSensors(useSensor(PointerSensor));
 
   const save = useMutation({
     mutationFn: () => editing
       ? cmsServices.update(editing.slug, form)
       : cmsServices.create({ ...form, slug: form.slug || slugify(form.title ?? '') }),
-    onSuccess: () => { inv(); setOpen(false); toast({ title: 'Service sauvegardé' }); },
+    onSuccess: () => { inv(); closeForm(); toast({ title: 'Service sauvegardé' }); },
     onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
   });
   const del = useMutation({
@@ -206,56 +319,78 @@ function ServicesTab() {
     onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
   });
 
-  function openCreate() { setEditing(null); setForm(SVC_BLANK); setOpen(true); }
-  function openEdit(s: CmsService) { setEditing(s); setForm(s); setOpen(true); }
+  function openCreate() { setEditing(null); setIsNew(true); setForm({ ...SVC_BLANK, order: items.length + 1 }); }
+  function openEdit(s: CmsService) { setEditing(s); setIsNew(false); setForm(s); }
+  function closeForm() { setEditing(null); setIsNew(false); }
   function set(k: keyof CmsService, v: unknown) { setForm(f => ({ ...f, [k]: v })); }
 
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = items.findIndex(i => i.id === active.id);
+    const newIdx = items.findIndex(i => i.id === over.id);
+    const reordered = arrayMove(items, oldIdx, newIdx).map((item, idx) => ({ ...item, order: idx + 1 }));
+    setItems(reordered);
+    reordered.forEach(item => { if (services.find(s => s.id === item.id)?.order !== item.order) cmsServices.update(item.slug, { order: item.order }); });
+  }
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{services.length} service{services.length !== 1 ? 's' : ''}</p>
-        <Button size="sm" onClick={openCreate}><Plus className="w-4 h-4 mr-1" />Ajouter</Button>
+    <div className={`grid gap-6 ${open ? 'lg:grid-cols-[1fr_400px]' : ''}`}>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">{items.length} service{items.length !== 1 ? 's' : ''}</p>
+          <Button size="sm" onClick={openCreate}><Plus className="w-4 h-4 mr-1" />Ajouter</Button>
+        </div>
+        {isLoading ? <div className="flex justify-center py-8"><Loader2 className="animate-spin w-5 h-5 text-muted-foreground" /></div>
+          : items.length === 0 ? <div className="text-center py-10 text-muted-foreground text-sm">Aucun service.</div>
+          : (
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
+                <div className="space-y-2">
+                  {items.map(s => (
+                    <SortableRow key={s.id} id={s.id}>
+                      {(dragHandle) => (
+                        <div className={`flex items-center gap-2 p-3 rounded-lg border bg-card transition-colors ${editing?.id === s.id ? 'border-primary/40 bg-primary/5' : 'hover:bg-accent/30'}`}>
+                          {dragHandle}
+                          <span className="w-6 text-xs font-mono text-muted-foreground shrink-0">{s.order}</span>
+                          <Badge variant="secondary" className="shrink-0 text-xs">{s.icon}</Badge>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-sm truncate">{s.title}</p>
+                            <p className="text-xs text-muted-foreground truncate">{s.short_description}</p>
+                          </div>
+                          <div className="flex gap-1 shrink-0">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(s)}><Pencil className="w-3.5 h-3.5" /></Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => { if (confirm('Supprimer ?')) del.mutate(s.slug); }}><Trash2 className="w-3.5 h-3.5" /></Button>
+                          </div>
+                        </div>
+                      )}
+                    </SortableRow>
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+          )}
       </div>
-      {isLoading ? <div className="flex justify-center py-8"><Loader2 className="animate-spin w-5 h-5 text-muted-foreground" /></div>
-        : services.length === 0 ? <div className="text-center py-10 text-muted-foreground text-sm">Aucun service.</div>
-        : <div className="space-y-2">{services.map(s => (
-          <div key={s.id} className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/30 transition-colors">
-            <span className="w-6 text-xs font-mono text-muted-foreground shrink-0">{s.order}</span>
-            <Badge variant="secondary" className="shrink-0 text-xs">{s.icon}</Badge>
-            <div className="min-w-0 flex-1">
-              <p className="font-medium text-sm truncate">{s.title}</p>
-              <p className="text-xs text-muted-foreground truncate">{s.short_description}</p>
-            </div>
-            <div className="flex gap-1 shrink-0">
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(s)}><Pencil className="w-3.5 h-3.5" /></Button>
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => { if (confirm('Supprimer ?')) del.mutate(s.slug); }}><Trash2 className="w-3.5 h-3.5" /></Button>
-            </div>
-          </div>
-        ))}</div>}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editing ? 'Modifier' : 'Nouveau'} service</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
-            <Field label="Titre *"><Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} /></Field>
-            {!editing && <Field label="Slug"><Input value={form.slug || slugify(form.title ?? '')} onChange={e => set('slug', e.target.value)} /></Field>}
-            <Field label="Icône">
-              <Select value={form.icon ?? 'Shield'} onValueChange={v => set('icon', v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{ICONS.map(i => <SelectItem key={i} value={i}>{i}</SelectItem>)}</SelectContent>
-              </Select>
-            </Field>
-            <Field label="Description courte *"><Textarea rows={2} value={form.short_description ?? ''} onChange={e => set('short_description', e.target.value)} /></Field>
-            <Field label="Description complète"><Textarea rows={4} value={form.body ?? ''} onChange={e => set('body', e.target.value)} /></Field>
-            <Field label="Ordre"><Input type="number" min={1} value={form.order ?? 1} onChange={e => set('order', parseInt(e.target.value) || 1)} className="w-24" /></Field>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
-            <Button onClick={() => save.mutate()} disabled={save.isPending || !form.title || !form.short_description}>
-              {save.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}Sauvegarder
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+
+      {open && (
+        <FormPanel title={editing ? 'Modifier le service' : 'Nouveau service'} onClose={closeForm} onSave={() => save.mutate()} isSaving={save.isPending} canSave={!!form.title && !!form.short_description}>
+          <Field label="Titre *"><Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} /></Field>
+          {!editing && <Field label="Slug"><Input value={form.slug || slugify(form.title ?? '')} onChange={e => set('slug', e.target.value)} /></Field>}
+          <Field label="Icône">
+            <Select value={form.icon ?? 'Shield'} onValueChange={v => set('icon', v)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>{ICONS.map(i => <SelectItem key={i} value={i}>{i}</SelectItem>)}</SelectContent>
+            </Select>
+          </Field>
+          <Field label="Description courte *">
+            <WysiwygEditor key={`${editing?.id ?? 'new-svc'}-short`} value={form.short_description ?? ''} onChange={v => set('short_description', v)} placeholder="Courte description…" minHeight="80px" />
+          </Field>
+          <Field label="Description complète">
+            <WysiwygEditor key={`${editing?.id ?? 'new-svc'}-body`} value={form.body ?? ''} onChange={v => set('body', v)} placeholder="Description complète du service…" />
+          </Field>
+          <Field label="Ordre"><Input type="number" min={1} value={form.order ?? 1} onChange={e => set('order', parseInt(e.target.value) || 1)} className="w-24" /></Field>
+        </FormPanel>
+      )}
     </div>
   );
 }
@@ -267,19 +402,21 @@ const ART_CATS = ['Actualité', 'Négociation', 'Juridique', 'Formation', 'Évé
 function ArticlesTab() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CmsArticle | null>(null);
+  const [isNew, setIsNew] = useState(false);
   const [form, setForm] = useState<Partial<CmsArticle>>(ART_BLANK);
   const [imgFile, setImgFile] = useState<File | null>(null);
 
   const { data: articles = [], isLoading } = useQuery({ queryKey: ['cms-articles'], queryFn: cmsArticles.list });
   const inv = () => qc.invalidateQueries({ queryKey: ['cms-articles'] });
 
+  const open = isNew || editing !== null;
+
   const save = useMutation({
     mutationFn: () => editing
       ? cmsArticles.update(editing.slug, form, imgFile ?? undefined)
       : cmsArticles.create({ ...form, slug: form.slug || slugify(form.title ?? '') }, imgFile ?? undefined),
-    onSuccess: () => { inv(); setOpen(false); toast({ title: 'Article sauvegardé' }); },
+    onSuccess: () => { inv(); closeForm(); toast({ title: 'Article sauvegardé' }); },
     onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
   });
   const del = useMutation({
@@ -288,82 +425,81 @@ function ArticlesTab() {
     onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
   });
 
-  function openCreate() { setEditing(null); setForm(ART_BLANK); setImgFile(null); setOpen(true); }
-  function openEdit(a: CmsArticle) { setEditing(a); setForm(a); setImgFile(null); setOpen(true); }
+  function openCreate() { setEditing(null); setIsNew(true); setForm(ART_BLANK); setImgFile(null); }
+  function openEdit(a: CmsArticle) { setEditing(a); setIsNew(false); setForm(a); setImgFile(null); }
+  function closeForm() { setEditing(null); setIsNew(false); }
   function set(k: keyof CmsArticle, v: unknown) { setForm(f => ({ ...f, [k]: v })); }
 
   const STATUS: Record<string, 'default' | 'secondary' | 'outline'> = { published: 'default', draft: 'secondary', archived: 'outline' };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{articles.length} article{articles.length !== 1 ? 's' : ''}</p>
-        <Button size="sm" onClick={openCreate}><Plus className="w-4 h-4 mr-1" />Ajouter</Button>
+    <div className={`grid gap-6 ${open ? 'lg:grid-cols-[1fr_420px]' : ''}`}>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">{articles.length} article{articles.length !== 1 ? 's' : ''}</p>
+          <Button size="sm" onClick={openCreate}><Plus className="w-4 h-4 mr-1" />Ajouter</Button>
+        </div>
+        {isLoading ? <div className="flex justify-center py-8"><Loader2 className="animate-spin w-5 h-5 text-muted-foreground" /></div>
+          : articles.length === 0 ? <div className="text-center py-10 text-muted-foreground text-sm">Aucun article.</div>
+          : <div className="space-y-2">{articles.map(a => (
+            <div key={a.id} className={`flex items-center gap-3 p-3 rounded-lg border bg-card transition-colors ${editing?.id === a.id ? 'border-primary/40 bg-primary/5' : 'hover:bg-accent/30'}`}>
+              {a.cover ? <img src={a.cover} alt="" className="w-14 h-9 object-cover rounded shrink-0" /> : <div className="w-14 h-9 rounded bg-muted shrink-0" />}
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-sm truncate">{a.title}</p>
+                <p className="text-xs text-muted-foreground">{a.category}</p>
+              </div>
+              <Badge variant={STATUS[a.status] ?? 'secondary'} className="shrink-0 text-xs capitalize">{a.status}</Badge>
+              {a.is_featured && <Badge className="shrink-0 text-xs">★</Badge>}
+              <div className="flex gap-1 shrink-0">
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(a)}><Pencil className="w-3.5 h-3.5" /></Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => { if (confirm('Supprimer ?')) del.mutate(a.slug); }}><Trash2 className="w-3.5 h-3.5" /></Button>
+              </div>
+            </div>
+          ))}</div>}
       </div>
-      {isLoading ? <div className="flex justify-center py-8"><Loader2 className="animate-spin w-5 h-5 text-muted-foreground" /></div>
-        : articles.length === 0 ? <div className="text-center py-10 text-muted-foreground text-sm">Aucun article.</div>
-        : <div className="space-y-2">{articles.map(a => (
-          <div key={a.id} className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/30 transition-colors">
-            {a.cover ? <img src={a.cover} alt="" className="w-14 h-9 object-cover rounded shrink-0" /> : <div className="w-14 h-9 rounded bg-muted shrink-0" />}
-            <div className="min-w-0 flex-1">
-              <p className="font-medium text-sm truncate">{a.title}</p>
-              <p className="text-xs text-muted-foreground">{a.category}</p>
-            </div>
-            <Badge variant={STATUS[a.status] ?? 'secondary'} className="shrink-0 text-xs capitalize">{a.status}</Badge>
-            {a.is_featured && <Badge className="shrink-0 text-xs">★</Badge>}
-            <div className="flex gap-1 shrink-0">
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(a)}><Pencil className="w-3.5 h-3.5" /></Button>
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => { if (confirm('Supprimer ?')) del.mutate(a.slug); }}><Trash2 className="w-3.5 h-3.5" /></Button>
-            </div>
-          </div>
-        ))}</div>}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editing ? 'Modifier' : 'Nouvel'} article</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
-            <Field label="Image de couverture">
-              <ImageDropzone currentUrl={form.cover ?? form.cover_image_url ?? ''} onFileChange={f => { setImgFile(f); if (f) set('cover_image_url', ''); }} />
+
+      {open && (
+        <FormPanel title={editing ? 'Modifier l\'article' : 'Nouvel article'} onClose={closeForm} onSave={() => save.mutate()} isSaving={save.isPending} canSave={!!form.title}>
+          <Field label="Image de couverture">
+            <MediaDropzone currentUrl={form.cover ?? form.cover_image_url ?? ''} onFileChange={f => { setImgFile(f); if (f) set('cover_image_url', ''); }} acceptVideo />
+          </Field>
+          <Field label="Titre *"><Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} /></Field>
+          {!editing && <Field label="Slug"><Input value={form.slug || slugify(form.title ?? '')} onChange={e => set('slug', e.target.value)} /></Field>}
+          <Field label="Résumé">
+            <WysiwygEditor key={`${editing?.id ?? 'new-art'}-excerpt`} value={form.excerpt ?? ''} onChange={v => set('excerpt', v)} placeholder="Résumé de l'article…" minHeight="80px" />
+          </Field>
+          <Field label="Contenu">
+            <WysiwygEditor key={`${editing?.id ?? 'new-art'}-body`} value={form.body ?? ''} onChange={v => set('body', v)} placeholder="Contenu de l'article…" />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Auteur"><Input value={form.author_name ?? ''} onChange={e => set('author_name', e.target.value)} /></Field>
+            <Field label="Catégorie">
+              <Select value={form.category ?? 'Actualité'} onValueChange={v => set('category', v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{ART_CATS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+              </Select>
             </Field>
-            <Field label="Titre *"><Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} /></Field>
-            {!editing && <Field label="Slug"><Input value={form.slug || slugify(form.title ?? '')} onChange={e => set('slug', e.target.value)} /></Field>}
-            <Field label="Résumé"><Textarea rows={2} value={form.excerpt ?? ''} onChange={e => set('excerpt', e.target.value)} /></Field>
-            <Field label="Contenu"><Textarea rows={4} value={form.body ?? ''} onChange={e => set('body', e.target.value)} /></Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Auteur"><Input value={form.author_name ?? ''} onChange={e => set('author_name', e.target.value)} /></Field>
-              <Field label="Catégorie">
-                <Select value={form.category ?? 'Actualité'} onValueChange={v => set('category', v)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{ART_CATS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                </Select>
-              </Field>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Statut">
-                <Select value={form.status ?? 'draft'} onValueChange={v => set('status', v)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="draft">Brouillon</SelectItem>
-                    <SelectItem value="published">Publié</SelectItem>
-                    <SelectItem value="archived">Archivé</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label="À la une">
-                <div className="flex items-center gap-2 pt-2">
-                  <Switch checked={!!form.is_featured} onCheckedChange={v => set('is_featured', v)} />
-                  <span className="text-sm">{form.is_featured ? 'Oui' : 'Non'}</span>
-                </div>
-              </Field>
-            </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
-            <Button onClick={() => save.mutate()} disabled={save.isPending || !form.title}>
-              {save.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}Sauvegarder
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Statut">
+              <Select value={form.status ?? 'draft'} onValueChange={v => set('status', v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="draft">Brouillon</SelectItem>
+                  <SelectItem value="published">Publié</SelectItem>
+                  <SelectItem value="archived">Archivé</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="À la une">
+              <div className="flex items-center gap-2 pt-2">
+                <Switch checked={!!form.is_featured} onCheckedChange={v => set('is_featured', v)} />
+                <span className="text-sm">{form.is_featured ? 'Oui' : 'Non'}</span>
+              </div>
+            </Field>
+          </div>
+        </FormPanel>
+      )}
     </div>
   );
 }
@@ -374,13 +510,15 @@ const EVT_BLANK: Partial<CmsEvent> = { title: '', slug: '', description: '', cov
 function EventsTab() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CmsEvent | null>(null);
+  const [isNew, setIsNew] = useState(false);
   const [form, setForm] = useState<Partial<CmsEvent>>(EVT_BLANK);
   const [imgFile, setImgFile] = useState<File | null>(null);
 
   const { data: events = [], isLoading } = useQuery({ queryKey: ['cms-events'], queryFn: cmsEvents.list });
   const inv = () => qc.invalidateQueries({ queryKey: ['cms-events'] });
+
+  const open = isNew || editing !== null;
 
   const save = useMutation({
     mutationFn: () => {
@@ -389,7 +527,7 @@ function EventsTab() {
         ? cmsEvents.update(editing.slug, payload, imgFile ?? undefined)
         : cmsEvents.create(payload, imgFile ?? undefined);
     },
-    onSuccess: () => { inv(); setOpen(false); toast({ title: 'Événement sauvegardé' }); },
+    onSuccess: () => { inv(); closeForm(); toast({ title: 'Événement sauvegardé' }); },
     onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
   });
   const del = useMutation({
@@ -398,80 +536,78 @@ function EventsTab() {
     onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
   });
 
-  function openCreate() { setEditing(null); setForm(EVT_BLANK); setImgFile(null); setOpen(true); }
-  function openEdit(e: CmsEvent) { setEditing(e); setForm(e); setImgFile(null); setOpen(true); }
+  function openCreate() { setEditing(null); setIsNew(true); setForm(EVT_BLANK); setImgFile(null); }
+  function openEdit(e: CmsEvent) { setEditing(e); setIsNew(false); setForm(e); setImgFile(null); }
+  function closeForm() { setEditing(null); setIsNew(false); }
   function set(k: keyof CmsEvent, v: unknown) { setForm(f => ({ ...f, [k]: v })); }
+
   const fmtDate = (d?: string | null) => d ? new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '';
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{events.length} événement{events.length !== 1 ? 's' : ''}</p>
-        <Button size="sm" onClick={openCreate}><Plus className="w-4 h-4 mr-1" />Ajouter</Button>
+    <div className={`grid gap-6 ${open ? 'lg:grid-cols-[1fr_420px]' : ''}`}>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">{events.length} événement{events.length !== 1 ? 's' : ''}</p>
+          <Button size="sm" onClick={openCreate}><Plus className="w-4 h-4 mr-1" />Ajouter</Button>
+        </div>
+        {isLoading ? <div className="flex justify-center py-8"><Loader2 className="animate-spin w-5 h-5 text-muted-foreground" /></div>
+          : events.length === 0 ? <div className="text-center py-10 text-muted-foreground text-sm">Aucun événement.</div>
+          : <div className="space-y-2">{events.map(e => (
+            <div key={e.id} className={`flex items-center gap-3 p-3 rounded-lg border bg-card transition-colors ${editing?.id === e.id ? 'border-primary/40 bg-primary/5' : 'hover:bg-accent/30'}`}>
+              {e.cover ? <img src={e.cover} alt="" className="w-14 h-9 object-cover rounded shrink-0" /> : <div className="w-14 h-9 rounded bg-muted flex items-center justify-center shrink-0"><CalendarDays className="w-4 h-4 text-muted-foreground" /></div>}
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-sm truncate">{e.title}</p>
+                <p className="text-xs text-muted-foreground">{fmtDate(e.start_date)} · {e.location}</p>
+              </div>
+              <Badge variant={e.status === 'upcoming' ? 'default' : 'secondary'} className="shrink-0 text-xs">{e.status}</Badge>
+              <div className="flex gap-1 shrink-0">
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(e)}><Pencil className="w-3.5 h-3.5" /></Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => { if (confirm('Supprimer ?')) del.mutate(e.slug); }}><Trash2 className="w-3.5 h-3.5" /></Button>
+              </div>
+            </div>
+          ))}</div>}
       </div>
-      {isLoading ? <div className="flex justify-center py-8"><Loader2 className="animate-spin w-5 h-5 text-muted-foreground" /></div>
-        : events.length === 0 ? <div className="text-center py-10 text-muted-foreground text-sm">Aucun événement.</div>
-        : <div className="space-y-2">{events.map(e => (
-          <div key={e.id} className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/30 transition-colors">
-            {e.cover ? <img src={e.cover} alt="" className="w-14 h-9 object-cover rounded shrink-0" /> : <div className="w-14 h-9 rounded bg-muted flex items-center justify-center shrink-0"><CalendarDays className="w-4 h-4 text-muted-foreground" /></div>}
-            <div className="min-w-0 flex-1">
-              <p className="font-medium text-sm truncate">{e.title}</p>
-              <p className="text-xs text-muted-foreground">{fmtDate(e.start_date)} · {e.location}</p>
-            </div>
-            <Badge variant={e.status === 'upcoming' ? 'default' : 'secondary'} className="shrink-0 text-xs">{e.status}</Badge>
-            <div className="flex gap-1 shrink-0">
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(e)}><Pencil className="w-3.5 h-3.5" /></Button>
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => { if (confirm('Supprimer ?')) del.mutate(e.slug); }}><Trash2 className="w-3.5 h-3.5" /></Button>
-            </div>
+
+      {open && (
+        <FormPanel title={editing ? 'Modifier l\'événement' : 'Nouvel événement'} onClose={closeForm} onSave={() => save.mutate()} isSaving={save.isPending} canSave={!!form.title && !!form.start_date}>
+          <Field label="Image">
+            <MediaDropzone currentUrl={form.cover ?? form.cover_image_url ?? ''} onFileChange={f => { setImgFile(f); if (f) set('cover_image_url', ''); }} acceptVideo />
+          </Field>
+          <Field label="Titre *"><Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} /></Field>
+          {!editing && <Field label="Slug"><Input value={form.slug || slugify(form.title ?? '')} onChange={e => set('slug', e.target.value)} /></Field>}
+          <Field label="Description">
+            <WysiwygEditor key={`${editing?.id ?? 'new-evt'}-desc`} value={form.description ?? ''} onChange={v => set('description', v)} placeholder="Description de l'événement…" />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Lieu"><Input value={form.location ?? ''} onChange={e => set('location', e.target.value)} /></Field>
+            <Field label="Adresse"><Input value={form.address ?? ''} onChange={e => set('address', e.target.value)} /></Field>
           </div>
-        ))}</div>}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editing ? 'Modifier' : 'Nouvel'} événement</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
-            <Field label="Image">
-              <ImageDropzone currentUrl={form.cover ?? form.cover_image_url ?? ''} onFileChange={f => { setImgFile(f); if (f) set('cover_image_url', ''); }} />
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Date début *"><Input type="datetime-local" value={form.start_date ? form.start_date.slice(0, 16) : ''} onChange={e => set('start_date', e.target.value + ':00Z')} /></Field>
+            <Field label="Date fin"><Input type="datetime-local" value={form.end_date ? form.end_date.slice(0, 16) : ''} onChange={e => set('end_date', e.target.value ? e.target.value + ':00Z' : '')} /></Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Statut">
+              <Select value={form.status ?? 'upcoming'} onValueChange={v => set('status', v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="upcoming">À venir</SelectItem>
+                  <SelectItem value="ongoing">En cours</SelectItem>
+                  <SelectItem value="past">Passé</SelectItem>
+                  <SelectItem value="cancelled">Annulé</SelectItem>
+                </SelectContent>
+              </Select>
             </Field>
-            <Field label="Titre *"><Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} /></Field>
-            {!editing && <Field label="Slug"><Input value={form.slug || slugify(form.title ?? '')} onChange={e => set('slug', e.target.value)} /></Field>}
-            <Field label="Description"><Textarea rows={2} value={form.description ?? ''} onChange={e => set('description', e.target.value)} /></Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Lieu"><Input value={form.location ?? ''} onChange={e => set('location', e.target.value)} /></Field>
-              <Field label="Adresse"><Input value={form.address ?? ''} onChange={e => set('address', e.target.value)} /></Field>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Date début *"><Input type="datetime-local" value={form.start_date ? form.start_date.slice(0, 16) : ''} onChange={e => set('start_date', e.target.value + ':00Z')} /></Field>
-              <Field label="Date fin"><Input type="datetime-local" value={form.end_date ? form.end_date.slice(0, 16) : ''} onChange={e => set('end_date', e.target.value ? e.target.value + ':00Z' : '')} /></Field>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Statut">
-                <Select value={form.status ?? 'upcoming'} onValueChange={v => set('status', v)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="upcoming">À venir</SelectItem>
-                    <SelectItem value="ongoing">En cours</SelectItem>
-                    <SelectItem value="past">Passé</SelectItem>
-                    <SelectItem value="cancelled">Annulé</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label="À la une">
-                <div className="flex items-center gap-2 pt-2">
-                  <Switch checked={!!form.is_featured} onCheckedChange={v => set('is_featured', v)} />
-                  <span className="text-sm">{form.is_featured ? 'Oui' : 'Non'}</span>
-                </div>
-              </Field>
-            </div>
-            <Field label="URL d'inscription"><Input value={form.registration_url ?? ''} onChange={e => set('registration_url', e.target.value)} placeholder="https://..." /></Field>
+            <Field label="À la une">
+              <div className="flex items-center gap-2 pt-2">
+                <Switch checked={!!form.is_featured} onCheckedChange={v => set('is_featured', v)} />
+                <span className="text-sm">{form.is_featured ? 'Oui' : 'Non'}</span>
+              </div>
+            </Field>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
-            <Button onClick={() => save.mutate()} disabled={save.isPending || !form.title || !form.start_date}>
-              {save.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}Sauvegarder
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          <Field label="URL d'inscription"><Input value={form.registration_url ?? ''} onChange={e => set('registration_url', e.target.value)} placeholder="https://…" /></Field>
+        </FormPanel>
+      )}
     </div>
   );
 }
@@ -482,19 +618,25 @@ const TEAM_BLANK: Partial<CmsTeamMember> = { full_name: '', role: '', bio: '', p
 function TeamTab() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CmsTeamMember | null>(null);
+  const [isNew, setIsNew] = useState(false);
   const [form, setForm] = useState<Partial<CmsTeamMember>>(TEAM_BLANK);
   const [imgFile, setImgFile] = useState<File | null>(null);
+  const [items, setItems] = useState<CmsTeamMember[]>([]);
 
   const { data: members = [], isLoading } = useQuery({ queryKey: ['cms-team'], queryFn: cmsTeam.list });
   const inv = () => qc.invalidateQueries({ queryKey: ['cms-team'] });
+
+  useEffect(() => { setItems([...members].sort((a, b) => a.order - b.order)); }, [members]);
+
+  const open = isNew || editing !== null;
+  const sensors = useSensors(useSensor(PointerSensor));
 
   const save = useMutation({
     mutationFn: () => editing
       ? cmsTeam.update(editing.id, form, imgFile ?? undefined)
       : cmsTeam.create(form, imgFile ?? undefined),
-    onSuccess: () => { inv(); setOpen(false); toast({ title: 'Membre sauvegardé' }); },
+    onSuccess: () => { inv(); closeForm(); toast({ title: 'Membre sauvegardé' }); },
     onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
   });
   const del = useMutation({
@@ -503,57 +645,77 @@ function TeamTab() {
     onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
   });
 
-  function openCreate() { setEditing(null); setForm({ ...TEAM_BLANK, order: members.length + 1 }); setImgFile(null); setOpen(true); }
-  function openEdit(m: CmsTeamMember) { setEditing(m); setForm(m); setImgFile(null); setOpen(true); }
+  function openCreate() { setEditing(null); setIsNew(true); setForm({ ...TEAM_BLANK, order: items.length + 1 }); setImgFile(null); }
+  function openEdit(m: CmsTeamMember) { setEditing(m); setIsNew(false); setForm(m); setImgFile(null); }
+  function closeForm() { setEditing(null); setIsNew(false); }
   function set(k: keyof CmsTeamMember, v: unknown) { setForm(f => ({ ...f, [k]: v })); }
 
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = items.findIndex(i => i.id === active.id);
+    const newIdx = items.findIndex(i => i.id === over.id);
+    const reordered = arrayMove(items, oldIdx, newIdx).map((item, idx) => ({ ...item, order: idx + 1 }));
+    setItems(reordered);
+    reordered.forEach(item => { if (members.find(m => m.id === item.id)?.order !== item.order) cmsTeam.update(item.id, { order: item.order }); });
+  }
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{members.length} membre{members.length !== 1 ? 's' : ''}</p>
-        <Button size="sm" onClick={openCreate}><Plus className="w-4 h-4 mr-1" />Ajouter</Button>
+    <div className={`grid gap-6 ${open ? 'lg:grid-cols-[1fr_400px]' : ''}`}>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">{items.length} membre{items.length !== 1 ? 's' : ''}</p>
+          <Button size="sm" onClick={openCreate}><Plus className="w-4 h-4 mr-1" />Ajouter</Button>
+        </div>
+        {isLoading ? <div className="flex justify-center py-8"><Loader2 className="animate-spin w-5 h-5 text-muted-foreground" /></div>
+          : items.length === 0 ? <div className="text-center py-10 text-muted-foreground text-sm">Aucun membre.</div>
+          : (
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
+                <div className="space-y-2">
+                  {items.map(m => (
+                    <SortableRow key={m.id} id={m.id}>
+                      {(dragHandle) => (
+                        <div className={`flex items-center gap-2 p-3 rounded-lg border bg-card transition-colors ${editing?.id === m.id ? 'border-primary/40 bg-primary/5' : 'hover:bg-accent/30'}`}>
+                          {dragHandle}
+                          {m.avatar ? <img src={m.avatar} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" /> : <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center shrink-0"><Users className="w-4 h-4 text-muted-foreground" /></div>}
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-sm truncate">{m.full_name}</p>
+                            <p className="text-xs text-muted-foreground truncate">{m.role}</p>
+                          </div>
+                          <div className="flex gap-1 shrink-0">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(m)}><Pencil className="w-3.5 h-3.5" /></Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => { if (confirm('Supprimer ?')) del.mutate(m.id); }}><Trash2 className="w-3.5 h-3.5" /></Button>
+                          </div>
+                        </div>
+                      )}
+                    </SortableRow>
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+          )}
       </div>
-      {isLoading ? <div className="flex justify-center py-8"><Loader2 className="animate-spin w-5 h-5 text-muted-foreground" /></div>
-        : members.length === 0 ? <div className="text-center py-10 text-muted-foreground text-sm">Aucun membre.</div>
-        : <div className="space-y-2">{members.map(m => (
-          <div key={m.id} className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/30 transition-colors">
-            {m.avatar ? <img src={m.avatar} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" /> : <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center shrink-0"><Users className="w-4 h-4 text-muted-foreground" /></div>}
-            <div className="min-w-0 flex-1">
-              <p className="font-medium text-sm truncate">{m.full_name}</p>
-              <p className="text-xs text-muted-foreground truncate">{m.role}</p>
-            </div>
-            <div className="flex gap-1 shrink-0">
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(m)}><Pencil className="w-3.5 h-3.5" /></Button>
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => { if (confirm('Supprimer ?')) del.mutate(m.id); }}><Trash2 className="w-3.5 h-3.5" /></Button>
-            </div>
+
+      {open && (
+        <FormPanel title={editing ? 'Modifier le membre' : 'Nouveau membre'} onClose={closeForm} onSave={() => save.mutate()} isSaving={save.isPending} canSave={!!form.full_name && !!form.role}>
+          <Field label="Photo">
+            <MediaDropzone currentUrl={form.avatar ?? form.photo_url ?? ''} onFileChange={f => { setImgFile(f); if (f) set('photo_url', ''); }} />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Nom complet *"><Input value={form.full_name ?? ''} onChange={e => set('full_name', e.target.value)} /></Field>
+            <Field label="Fonction *"><Input value={form.role ?? ''} onChange={e => set('role', e.target.value)} /></Field>
           </div>
-        ))}</div>}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editing ? 'Modifier' : 'Nouveau'} membre</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
-            <Field label="Photo">
-              <ImageDropzone currentUrl={form.avatar ?? form.photo_url ?? ''} onFileChange={f => { setImgFile(f); if (f) set('photo_url', ''); }} />
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Nom complet *"><Input value={form.full_name ?? ''} onChange={e => set('full_name', e.target.value)} /></Field>
-              <Field label="Fonction *"><Input value={form.role ?? ''} onChange={e => set('role', e.target.value)} /></Field>
-            </div>
-            <Field label="Biographie"><Textarea rows={3} value={form.bio ?? ''} onChange={e => set('bio', e.target.value)} /></Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Email"><Input type="email" value={form.email ?? ''} onChange={e => set('email', e.target.value)} /></Field>
-              <Field label="LinkedIn"><Input value={form.linkedin_url ?? ''} onChange={e => set('linkedin_url', e.target.value)} placeholder="https://linkedin.com/in/..." /></Field>
-            </div>
-            <Field label="Ordre"><Input type="number" min={1} value={form.order ?? 1} onChange={e => set('order', parseInt(e.target.value) || 1)} className="w-24" /></Field>
+          <Field label="Biographie">
+            <WysiwygEditor key={editing?.id ?? 'new-team'} value={form.bio ?? ''} onChange={v => set('bio', v)} placeholder="Biographie du membre…" />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Email"><Input type="email" value={form.email ?? ''} onChange={e => set('email', e.target.value)} /></Field>
+            <Field label="LinkedIn"><Input value={form.linkedin_url ?? ''} onChange={e => set('linkedin_url', e.target.value)} placeholder="https://linkedin.com/in/…" /></Field>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
-            <Button onClick={() => save.mutate()} disabled={save.isPending || !form.full_name || !form.role}>
-              {save.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}Sauvegarder
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          <Field label="Ordre"><Input type="number" min={1} value={form.order ?? 1} onChange={e => set('order', parseInt(e.target.value) || 1)} className="w-24" /></Field>
+        </FormPanel>
+      )}
     </div>
   );
 }
@@ -580,186 +742,204 @@ function ContactTab() {
   const unread = messages.filter(m => m.status === 'new').length;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <p className="text-sm text-muted-foreground">{messages.length} message{messages.length !== 1 ? 's' : ''}</p>
-        {unread > 0 && <Badge variant="default" className="text-xs">{unread} nouveau{unread > 1 ? 'x' : ''}</Badge>}
+    <div className={`grid gap-6 ${selected ? 'lg:grid-cols-[1fr_380px]' : ''}`}>
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <p className="text-sm text-muted-foreground">{messages.length} message{messages.length !== 1 ? 's' : ''}</p>
+          {unread > 0 && <Badge variant="default" className="text-xs">{unread} nouveau{unread > 1 ? 'x' : ''}</Badge>}
+        </div>
+        {isLoading ? <div className="flex justify-center py-8"><Loader2 className="animate-spin w-5 h-5 text-muted-foreground" /></div>
+          : messages.length === 0 ? <div className="text-center py-10 text-muted-foreground text-sm">Aucun message reçu.</div>
+          : <div className="space-y-2">{messages.map(m => (
+            <div
+              key={m.id}
+              className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors hover:bg-accent/30 ${selected?.id === m.id ? 'border-primary/40 bg-primary/5' : m.status === 'new' ? 'bg-primary/5 border-primary/20' : 'bg-card'}`}
+              onClick={() => setSelected(m)}
+            >
+              <div className="mt-0.5 shrink-0">
+                {m.status === 'new' ? <Clock className="w-4 h-4 text-primary" /> : <CheckCircle className="w-4 h-4 text-muted-foreground" />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="font-medium text-sm truncate">{m.full_name}</p>
+                  {m.company && <span className="text-xs text-muted-foreground">· {m.company}</span>}
+                </div>
+                <p className="text-xs font-medium text-foreground/80 truncate">{m.subject}</p>
+                <p className="text-xs text-muted-foreground truncate">{m.message}</p>
+              </div>
+              <div className="text-xs text-muted-foreground shrink-0">
+                {new Date(m.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+              </div>
+            </div>
+          ))}</div>}
       </div>
-      {isLoading ? <div className="flex justify-center py-8"><Loader2 className="animate-spin w-5 h-5 text-muted-foreground" /></div>
-        : messages.length === 0 ? <div className="text-center py-10 text-muted-foreground text-sm">Aucun message reçu.</div>
-        : <div className="space-y-2">{messages.map(m => (
-          <div
-            key={m.id}
-            className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors hover:bg-accent/30 ${m.status === 'new' ? 'bg-primary/5 border-primary/20' : 'bg-card'}`}
-            onClick={() => setSelected(m)}
-          >
-            <div className="mt-0.5 shrink-0">
-              {m.status === 'new' ? <Clock className="w-4 h-4 text-primary" /> : <CheckCircle className="w-4 h-4 text-muted-foreground" />}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <p className="font-medium text-sm truncate">{m.full_name}</p>
-                {m.company && <span className="text-xs text-muted-foreground">· {m.company}</span>}
-              </div>
-              <p className="text-xs font-medium text-foreground/80 truncate">{m.subject}</p>
-              <p className="text-xs text-muted-foreground truncate">{m.message}</p>
-            </div>
-            <div className="text-xs text-muted-foreground shrink-0">
-              {new Date(m.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
-            </div>
-          </div>
-        ))}</div>}
 
-      <Dialog open={!!selected} onOpenChange={o => !o && setSelected(null)}>
-        {selected && (
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Mail className="w-4 h-4" /> Message de {selected.full_name}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-3 py-2 text-sm">
-              <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
-                <div><span className="font-semibold text-foreground">Email : </span>{selected.email}</div>
-                {selected.phone && <div><span className="font-semibold text-foreground">Tél : </span>{selected.phone}</div>}
-                {selected.company && <div><span className="font-semibold text-foreground">Société : </span>{selected.company}</div>}
-                <div><span className="font-semibold text-foreground">Date : </span>{new Date(selected.created_at).toLocaleString('fr-FR')}</div>
-              </div>
-              <Separator />
-              <p className="font-semibold">{selected.subject}</p>
-              <p className="text-muted-foreground whitespace-pre-wrap leading-relaxed">{selected.message}</p>
+      {selected && (
+        <div className="rounded-xl border bg-card shadow-sm h-fit sticky top-4">
+          <div className="flex items-center justify-between px-5 py-3 border-b">
+            <div className="flex items-center gap-2">
+              <Mail className="w-4 h-4" />
+              <h3 className="font-semibold text-sm truncate">{selected.full_name}</h3>
             </div>
-            <DialogFooter className="gap-2">
-              <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => { if (confirm('Supprimer ?')) del.mutate(selected.id); }}>
-                <Trash2 className="w-3.5 h-3.5 mr-1" />Supprimer
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSelected(null)}><X className="w-4 h-4" /></Button>
+          </div>
+          <div className="px-5 py-4 space-y-3 text-sm">
+            <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+              <div><span className="font-semibold text-foreground">Email : </span>{selected.email}</div>
+              {selected.phone && <div><span className="font-semibold text-foreground">Tél : </span>{selected.phone}</div>}
+              {selected.company && <div><span className="font-semibold text-foreground">Société : </span>{selected.company}</div>}
+              <div><span className="font-semibold text-foreground">Date : </span>{new Date(selected.created_at).toLocaleString('fr-FR')}</div>
+            </div>
+            <Separator />
+            <p className="font-semibold">{selected.subject}</p>
+            <p className="text-muted-foreground whitespace-pre-wrap leading-relaxed text-xs">{selected.message}</p>
+          </div>
+          <div className="flex flex-wrap gap-2 px-5 py-3 border-t">
+            <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => { if (confirm('Supprimer ?')) del.mutate(selected.id); }}>
+              <Trash2 className="w-3.5 h-3.5 mr-1" />Supprimer
+            </Button>
+            {selected.status === 'new' && (
+              <Button size="sm" variant="outline" onClick={() => { markRead.mutate(selected.id); setSelected(s => s ? { ...s, status: 'resolved' } : null); }}>
+                <CheckCircle className="w-3.5 h-3.5 mr-1" />Traité
               </Button>
-              {selected.status === 'new' && (
-                <Button size="sm" onClick={() => { markRead.mutate(selected.id); setSelected(null); }}>
-                  <CheckCircle className="w-3.5 h-3.5 mr-1" />Marquer traité
-                </Button>
-              )}
-              <a href={`mailto:${selected.email}?subject=Re: ${encodeURIComponent(selected.subject)}`} className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
-                <Mail className="w-3.5 h-3.5" />Répondre par email
-              </a>
-            </DialogFooter>
-          </DialogContent>
-        )}
-      </Dialog>
+            )}
+            <a href={`mailto:${selected.email}?subject=Re: ${encodeURIComponent(selected.subject)}`}
+              className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+              <Mail className="w-3.5 h-3.5" />Répondre
+            </a>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-
-// -- PARTENAIRES -------------------------------------------------------------
+// ── PARTENAIRES ───────────────────────────────────────────────────────
 const PARTNER_BLANK: Partial<CmsPartner> = { name: '', logo_url: '', website_url: '', order: 1, is_active: true };
 
 function PartnersTab() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CmsPartner | null>(null);
+  const [isNew, setIsNew] = useState(false);
   const [form, setForm] = useState<Partial<CmsPartner>>(PARTNER_BLANK);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [items, setItems] = useState<CmsPartner[]>([]);
 
   const set = (k: keyof CmsPartner, v: unknown) => setForm(f => ({ ...f, [k]: v }));
   const inv = () => qc.invalidateQueries({ queryKey: ['cms-partners'] });
 
-  const { data: items = [], isLoading } = useQuery({ queryKey: ['cms-partners'], queryFn: cmsPartners.list });
+  const { data: partners = [], isLoading } = useQuery({ queryKey: ['cms-partners'], queryFn: cmsPartners.list });
+
+  useEffect(() => { setItems([...partners].sort((a, b) => a.order - b.order)); }, [partners]);
+
+  const open = isNew || editing !== null;
+  const sensors = useSensors(useSensor(PointerSensor));
 
   const save = useMutation({
     mutationFn: () => editing
       ? cmsPartners.update(editing.id, form, pendingFile ?? undefined)
       : cmsPartners.create(form, pendingFile ?? undefined),
-    onSuccess: () => { inv(); setOpen(false); setPendingFile(null); toast({ title: editing ? 'Partenaire modifie' : 'Partenaire ajoute' }); },
+    onSuccess: () => { inv(); closeForm(); toast({ title: editing ? 'Partenaire modifié' : 'Partenaire ajouté' }); },
     onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
   });
 
   const del = useMutation({
     mutationFn: (id: string) => cmsPartners.remove(id),
-    onSuccess: () => { inv(); toast({ title: 'Partenaire supprime' }); },
+    onSuccess: () => { inv(); toast({ title: 'Partenaire supprimé' }); },
     onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
   });
 
-  function openNew() { setEditing(null); setForm(PARTNER_BLANK); setPendingFile(null); setOpen(true); }
-  function openEdit(p: CmsPartner) { setEditing(p); setForm(p); setPendingFile(null); setOpen(true); }
+  function openNew() { setEditing(null); setIsNew(true); setForm(PARTNER_BLANK); setPendingFile(null); }
+  function openEdit(p: CmsPartner) { setEditing(p); setIsNew(false); setForm(p); setPendingFile(null); }
+  function closeForm() { setEditing(null); setIsNew(false); }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = items.findIndex(i => i.id === active.id);
+    const newIdx = items.findIndex(i => i.id === over.id);
+    const reordered = arrayMove(items, oldIdx, newIdx).map((item, idx) => ({ ...item, order: idx + 1 }));
+    setItems(reordered);
+    cmsPartners.reorder(reordered.map(i => i.id));
+  }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{items.length} partenaire{items.length !== 1 ? 's' : ''}</p>
-        <Button size="sm" onClick={openNew}><Plus className="w-3.5 h-3.5 mr-1" />Ajouter</Button>
-      </div>
-      {isLoading ? (
-        <div className="flex justify-center py-8"><Loader2 className="animate-spin w-5 h-5 text-muted-foreground" /></div>
-      ) : items.length === 0 ? (
-        <div className="text-center py-10 text-muted-foreground text-sm">Aucun partenaire. Cliquez sur Ajouter.</div>
-      ) : (
-        <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
-          {items.map(p => (
-            <div key={p.id} className="group relative rounded-xl border bg-card p-4 flex flex-col items-center gap-2">
-              {p.logo_src
-                ? <img src={p.logo_src} alt={p.name} className="h-14 w-full object-contain" />
-                : <div className="h-14 w-full flex items-center justify-center bg-muted rounded text-sm font-medium">{p.name}</div>}
-              <p className="text-xs text-center font-medium truncate w-full">{p.name}</p>
-              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <Button size="icon" variant="secondary" className="w-7 h-7" onClick={() => openEdit(p)}><Pencil className="w-3.5 h-3.5" /></Button>
-                <Button size="icon" variant="destructive" className="w-7 h-7" onClick={() => { if (confirm('Supprimer ?')) del.mutate(p.id); }}><Trash2 className="w-3.5 h-3.5" /></Button>
-              </div>
-            </div>
-          ))}
+    <div className={`grid gap-6 ${open ? 'lg:grid-cols-[1fr_360px]' : ''}`}>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">{items.length} partenaire{items.length !== 1 ? 's' : ''}</p>
+          <Button size="sm" onClick={openNew}><Plus className="w-3.5 h-3.5 mr-1" />Ajouter</Button>
         </div>
-      )}
+        {isLoading ? (
+          <div className="flex justify-center py-8"><Loader2 className="animate-spin w-5 h-5 text-muted-foreground" /></div>
+        ) : items.length === 0 ? (
+          <div className="text-center py-10 text-muted-foreground text-sm">Aucun partenaire.</div>
+        ) : (
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-2">
+                {items.map(p => (
+                  <SortableRow key={p.id} id={p.id}>
+                    {(dragHandle) => (
+                      <div className={`flex items-center gap-3 p-3 rounded-lg border bg-card transition-colors ${editing?.id === p.id ? 'border-primary/40 bg-primary/5' : 'hover:bg-accent/30'}`}>
+                        {dragHandle}
+                        {p.logo_src
+                          ? <img src={p.logo_src} alt={p.name} className="h-9 w-16 object-contain rounded shrink-0" />
+                          : <div className="h-9 w-16 rounded bg-muted flex items-center justify-center shrink-0 text-xs font-medium truncate px-1">{p.name}</div>}
+                        <p className="text-sm font-medium flex-1 min-w-0 truncate">{p.name}</p>
+                        {!p.is_active && <Badge variant="outline" className="text-xs">Caché</Badge>}
+                        <div className="flex gap-1 shrink-0">
+                          <Button size="icon" variant="ghost" className="w-7 h-7" onClick={() => openEdit(p)}><Pencil className="w-3.5 h-3.5" /></Button>
+                          <Button size="icon" variant="ghost" className="w-7 h-7 text-destructive" onClick={() => { if (confirm('Supprimer ?')) del.mutate(p.id); }}><Trash2 className="w-3.5 h-3.5" /></Button>
+                        </div>
+                      </div>
+                    )}
+                  </SortableRow>
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        )}
+      </div>
 
-      <Dialog open={open} onOpenChange={o => { if (!o) { setOpen(false); setPendingFile(null); } }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>{editing ? 'Modifier le partenaire' : 'Ajouter un partenaire'}</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
-            <Field label="Nom *">
-              <Input value={form.name ?? ''} onChange={e => set('name', e.target.value)} placeholder="Nom du partenaire" />
-            </Field>
-            <Field label="Logo">
-              <ImageDropzone currentUrl={form.logo_src ?? form.logo_url ?? ''} onFileChange={f => { setPendingFile(f); if (f) set('logo_url', ''); }} />
-            </Field>
-            <Field label="Site web">
-              <Input value={form.website_url ?? ''} onChange={e => set('website_url', e.target.value)} placeholder="https://..." />
-            </Field>
-            <Field label="Ordre">
-              <Input type="number" min={1} value={form.order ?? 1} onChange={e => set('order', parseInt(e.target.value) || 1)} className="w-24" />
-            </Field>
-            <div className="flex items-center gap-2">
-              <Switch checked={form.is_active ?? true} onCheckedChange={v => set('is_active', v)} id="partner-active" />
-              <Label htmlFor="partner-active" className="text-sm">Visible sur le site</Label>
-            </div>
+      {open && (
+        <FormPanel title={editing ? 'Modifier le partenaire' : 'Ajouter un partenaire'} onClose={closeForm} onSave={() => save.mutate()} isSaving={save.isPending} canSave={!!form.name}>
+          <Field label="Nom *">
+            <Input value={form.name ?? ''} onChange={e => set('name', e.target.value)} placeholder="Nom du partenaire" />
+          </Field>
+          <Field label="Logo">
+            <MediaDropzone currentUrl={form.logo_src ?? form.logo_url ?? ''} onFileChange={f => { setPendingFile(f); if (f) set('logo_url', ''); }} />
+          </Field>
+          <Field label="Site web">
+            <Input value={form.website_url ?? ''} onChange={e => set('website_url', e.target.value)} placeholder="https://…" />
+          </Field>
+          <div className="flex items-center gap-2">
+            <Switch checked={form.is_active ?? true} onCheckedChange={v => set('is_active', v)} id="partner-active" />
+            <Label htmlFor="partner-active" className="text-sm">Visible sur le site</Label>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
-            <Button onClick={() => save.mutate()} disabled={save.isPending || !form.name}>
-              {save.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
-              {editing ? 'Enregistrer' : 'Ajouter'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </FormPanel>
+      )}
     </div>
   );
 }
 
-// -- DOCUMENTS ----------------------------------------------------------------
+// ── DOCUMENTS ────────────────────────────────────────────────────────
 const DOC_BLANK: Partial<CmsPublicDocument> = { title: '', description: '', category: 'autre', file_url: '', order: 1, is_active: true };
 const DOC_CATEGORIES = [
   { value: 'institutionnel', label: 'Institutionnel & Juridique' },
-  { value: 'convention',     label: 'Conventions Collectives' },
-  { value: 'evaluation',     label: 'Evaluation des Entreprises' },
-  { value: 'adherent',       label: 'Documents Adherents' },
-  { value: 'financier',      label: 'Transparence Financiere' },
-  { value: 'autre',          label: 'Autres Documents' },
+  { value: 'convention', label: 'Conventions Collectives' },
+  { value: 'evaluation', label: 'Evaluation des Entreprises' },
+  { value: 'adherent', label: 'Documents Adherents' },
+  { value: 'financier', label: 'Transparence Financière' },
+  { value: 'autre', label: 'Autres Documents' },
 ];
 
 function DocumentsTab() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CmsPublicDocument | null>(null);
+  const [isNew, setIsNew] = useState(false);
   const [form, setForm] = useState<Partial<CmsPublicDocument>>(DOC_BLANK);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
 
@@ -768,108 +948,103 @@ function DocumentsTab() {
 
   const { data: items = [], isLoading } = useQuery({ queryKey: ['cms-documents'], queryFn: cmsPublicDocuments.list });
 
+  const open = isNew || editing !== null;
+
   const save = useMutation({
     mutationFn: () => editing
       ? cmsPublicDocuments.update(editing.id, form, pendingFile ?? undefined)
       : cmsPublicDocuments.create(form, pendingFile ?? undefined),
-    onSuccess: () => { inv(); setOpen(false); setPendingFile(null); toast({ title: editing ? 'Document modifie' : 'Document ajoute' }); },
+    onSuccess: () => { inv(); closeForm(); toast({ title: editing ? 'Document modifié' : 'Document ajouté' }); },
     onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
   });
 
   const del = useMutation({
     mutationFn: (id: string) => cmsPublicDocuments.remove(id),
-    onSuccess: () => { inv(); toast({ title: 'Document supprime' }); },
+    onSuccess: () => { inv(); toast({ title: 'Document supprimé' }); },
     onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
   });
 
-  function openNew() { setEditing(null); setForm(DOC_BLANK); setPendingFile(null); setOpen(true); }
-  function openEdit(d: CmsPublicDocument) { setEditing(d); setForm(d); setPendingFile(null); setOpen(true); }
+  function openNew() { setEditing(null); setIsNew(true); setForm(DOC_BLANK); setPendingFile(null); }
+  function openEdit(d: CmsPublicDocument) { setEditing(d); setIsNew(false); setForm(d); setPendingFile(null); }
+  function closeForm() { setEditing(null); setIsNew(false); }
 
   const catLabel = (key: string) => DOC_CATEGORIES.find(c => c.value === key)?.label ?? key;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{items.length} document{items.length !== 1 ? 's' : ''}</p>
-        <Button size="sm" onClick={openNew}><Plus className="w-3.5 h-3.5 mr-1" />Ajouter</Button>
-      </div>
-      {isLoading ? (
-        <div className="flex justify-center py-8"><Loader2 className="animate-spin w-5 h-5 text-muted-foreground" /></div>
-      ) : items.length === 0 ? (
-        <div className="text-center py-10 text-muted-foreground text-sm">Aucun document. Cliquez sur Ajouter.</div>
-      ) : (
-        <div className="space-y-2">
-          {items.map(d => (
-            <div key={d.id} className="flex items-center gap-3 p-3 rounded-lg border bg-card">
-              <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{d.title}</p>
-                <p className="text-xs text-muted-foreground">{catLabel(d.category)}</p>
-              </div>
-              {d.download_url && <a href={d.download_url} target="_blank" rel="noreferrer" className="text-xs text-primary underline shrink-0">PDF</a>}
-              <Button size="icon" variant="ghost" className="w-7 h-7 shrink-0" onClick={() => openEdit(d)}><Pencil className="w-3.5 h-3.5" /></Button>
-              <Button size="icon" variant="ghost" className="w-7 h-7 shrink-0 text-destructive" onClick={() => { if (confirm('Supprimer ?')) del.mutate(d.id); }}><Trash2 className="w-3.5 h-3.5" /></Button>
-            </div>
-          ))}
+    <div className={`grid gap-6 ${open ? 'lg:grid-cols-[1fr_380px]' : ''}`}>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">{items.length} document{items.length !== 1 ? 's' : ''}</p>
+          <Button size="sm" onClick={openNew}><Plus className="w-3.5 h-3.5 mr-1" />Ajouter</Button>
         </div>
-      )}
-
-      <Dialog open={open} onOpenChange={o => { if (!o) { setOpen(false); setPendingFile(null); } }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>{editing ? 'Modifier le document' : 'Ajouter un document'}</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
-            <Field label="Titre *">
-              <Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} placeholder="Titre du document" />
-            </Field>
-            <Field label="Categorie">
-              <Select value={form.category ?? 'autre'} onValueChange={v => set('category', v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {DOC_CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Fichier PDF">
-              <input type="file" accept=".pdf" className="text-sm" onChange={e => { const f = e.target.files?.[0]; if (f) setPendingFile(f); }} />
-              {(form.file_url || form.download_url) && !pendingFile && (
-                <a href={form.download_url ?? form.file_url} target="_blank" rel="noreferrer" className="text-xs text-primary underline">Voir le fichier actuel</a>
-              )}
-            </Field>
-            <Field label="Ou URL directe">
-              <Input value={form.file_url ?? ''} onChange={e => set('file_url', e.target.value)} placeholder="https://..." />
-            </Field>
-            <Field label="Description">
-              <Textarea rows={2} value={form.description ?? ''} onChange={e => set('description', e.target.value)} />
-            </Field>
-            <Field label="Ordre">
-              <Input type="number" min={1} value={form.order ?? 1} onChange={e => set('order', parseInt(e.target.value) || 1)} className="w-24" />
-            </Field>
-            <div className="flex items-center gap-2">
-              <Switch checked={form.is_active ?? true} onCheckedChange={v => set('is_active', v)} id="doc-active" />
-              <Label htmlFor="doc-active" className="text-sm">Visible sur le site</Label>
-            </div>
+        {isLoading ? (
+          <div className="flex justify-center py-8"><Loader2 className="animate-spin w-5 h-5 text-muted-foreground" /></div>
+        ) : items.length === 0 ? (
+          <div className="text-center py-10 text-muted-foreground text-sm">Aucun document.</div>
+        ) : (
+          <div className="space-y-2">
+            {items.map(d => (
+              <div key={d.id} className={`flex items-center gap-3 p-3 rounded-lg border bg-card transition-colors ${editing?.id === d.id ? 'border-primary/40 bg-primary/5' : 'hover:bg-accent/30'}`}>
+                <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{d.title}</p>
+                  <p className="text-xs text-muted-foreground">{catLabel(d.category)}</p>
+                </div>
+                {d.download_url && <a href={d.download_url} target="_blank" rel="noreferrer" className="text-xs text-primary underline shrink-0">PDF</a>}
+                <Button size="icon" variant="ghost" className="w-7 h-7 shrink-0" onClick={() => openEdit(d)}><Pencil className="w-3.5 h-3.5" /></Button>
+                <Button size="icon" variant="ghost" className="w-7 h-7 shrink-0 text-destructive" onClick={() => { if (confirm('Supprimer ?')) del.mutate(d.id); }}><Trash2 className="w-3.5 h-3.5" /></Button>
+              </div>
+            ))}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
-            <Button onClick={() => save.mutate()} disabled={save.isPending || !form.title}>
-              {save.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
-              {editing ? 'Enregistrer' : 'Ajouter'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        )}
+      </div>
+
+      {open && (
+        <FormPanel title={editing ? 'Modifier le document' : 'Ajouter un document'} onClose={closeForm} onSave={() => save.mutate()} isSaving={save.isPending} canSave={!!form.title}>
+          <Field label="Titre *">
+            <Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} placeholder="Titre du document" />
+          </Field>
+          <Field label="Catégorie">
+            <Select value={form.category ?? 'autre'} onValueChange={v => set('category', v)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {DOC_CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Fichier PDF">
+            <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" className="text-sm w-full" onChange={e => { const f = e.target.files?.[0]; if (f) setPendingFile(f); }} />
+            {(form.file_url || form.download_url) && !pendingFile && (
+              <a href={form.download_url ?? form.file_url} target="_blank" rel="noreferrer" className="text-xs text-primary underline">Voir le fichier actuel</a>
+            )}
+          </Field>
+          <Field label="Ou URL directe">
+            <Input value={form.file_url ?? ''} onChange={e => set('file_url', e.target.value)} placeholder="https://…" />
+          </Field>
+          <Field label="Description">
+            <WysiwygEditor key={editing?.id ?? 'new-doc'} value={form.description ?? ''} onChange={v => set('description', v)} placeholder="Description du document…" minHeight="80px" />
+          </Field>
+          <Field label="Ordre">
+            <Input type="number" min={1} value={form.order ?? 1} onChange={e => set('order', parseInt(e.target.value) || 1)} className="w-24" />
+          </Field>
+          <div className="flex items-center gap-2">
+            <Switch checked={form.is_active ?? true} onCheckedChange={v => set('is_active', v)} id="doc-active" />
+            <Label htmlFor="doc-active" className="text-sm">Visible sur le site</Label>
+          </div>
+        </FormPanel>
+      )}
     </div>
   );
 }
 
-// -- GALERIE ------------------------------------------------------------------
+// ── GALERIE ───────────────────────────────────────────────────────────
 const GALLERY_BLANK: Partial<CmsGalleryImage> = { title: '', description: '', image_url: '', category: '', order: 1, is_active: true };
 
 function GalleryTab() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CmsGalleryImage | null>(null);
+  const [isNew, setIsNew] = useState(false);
   const [form, setForm] = useState<Partial<CmsGalleryImage>>(GALLERY_BLANK);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
 
@@ -878,90 +1053,85 @@ function GalleryTab() {
 
   const { data: items = [], isLoading } = useQuery({ queryKey: ['cms-gallery'], queryFn: cmsGallery.list });
 
+  const open = isNew || editing !== null;
+
   const save = useMutation({
     mutationFn: () => editing
       ? cmsGallery.update(editing.id, form, pendingFile ?? undefined)
       : cmsGallery.create(form, pendingFile ?? undefined),
-    onSuccess: () => { inv(); setOpen(false); setPendingFile(null); toast({ title: editing ? 'Photo modifiee' : 'Photo ajoutee' }); },
+    onSuccess: () => { inv(); closeForm(); toast({ title: editing ? 'Photo modifiée' : 'Photo ajoutée' }); },
     onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
   });
 
   const del = useMutation({
     mutationFn: (id: string) => cmsGallery.remove(id),
-    onSuccess: () => { inv(); toast({ title: 'Photo supprimee' }); },
+    onSuccess: () => { inv(); toast({ title: 'Photo supprimée' }); },
     onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
   });
 
-  function openNew() { setEditing(null); setForm(GALLERY_BLANK); setPendingFile(null); setOpen(true); }
-  function openEdit(p: CmsGalleryImage) { setEditing(p); setForm(p); setPendingFile(null); setOpen(true); }
+  function openNew() { setEditing(null); setIsNew(true); setForm(GALLERY_BLANK); setPendingFile(null); }
+  function openEdit(p: CmsGalleryImage) { setEditing(p); setIsNew(false); setForm(p); setPendingFile(null); }
+  function closeForm() { setEditing(null); setIsNew(false); }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{items.length} photo{items.length !== 1 ? 's' : ''}</p>
-        <Button size="sm" onClick={openNew}><Plus className="w-3.5 h-3.5 mr-1" />Ajouter</Button>
-      </div>
-      {isLoading ? (
-        <div className="flex justify-center py-8"><Loader2 className="animate-spin w-5 h-5 text-muted-foreground" /></div>
-      ) : items.length === 0 ? (
-        <div className="text-center py-10 text-muted-foreground text-sm">Aucune photo. Cliquez sur Ajouter.</div>
-      ) : (
-        <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
-          {items.map(p => (
-            <div key={p.id} className="group relative aspect-square rounded-xl overflow-hidden border bg-muted">
-              {p.src
-                ? <img src={p.src} alt={p.title} className="w-full h-full object-cover" />
-                : <div className="w-full h-full flex items-center justify-center"><Image className="w-8 h-8 text-muted-foreground" /></div>}
-              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
-                <p className="text-white text-xs font-medium text-center px-2 truncate w-full">{p.title}</p>
-                <div className="flex gap-1">
-                  <Button size="icon" variant="secondary" className="w-7 h-7" onClick={() => openEdit(p)}><Pencil className="w-3.5 h-3.5" /></Button>
-                  <Button size="icon" variant="destructive" className="w-7 h-7" onClick={() => { if (confirm('Supprimer ?')) del.mutate(p.id); }}><Trash2 className="w-3.5 h-3.5" /></Button>
+    <div className={`grid gap-6 ${open ? 'lg:grid-cols-[1fr_360px]' : ''}`}>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">{items.length} photo{items.length !== 1 ? 's' : ''}</p>
+          <Button size="sm" onClick={openNew}><Plus className="w-3.5 h-3.5 mr-1" />Ajouter</Button>
+        </div>
+        {isLoading ? (
+          <div className="flex justify-center py-8"><Loader2 className="animate-spin w-5 h-5 text-muted-foreground" /></div>
+        ) : items.length === 0 ? (
+          <div className="text-center py-10 text-muted-foreground text-sm">Aucune photo.</div>
+        ) : (
+          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
+            {items.map(p => (
+              <div key={p.id} className={`group relative aspect-square rounded-xl overflow-hidden border transition-all ${editing?.id === p.id ? 'ring-2 ring-primary' : ''} bg-muted`}>
+                {p.src
+                  ? <img src={p.src} alt={p.title} className="w-full h-full object-cover" />
+                  : <div className="w-full h-full flex items-center justify-center"><Image className="w-8 h-8 text-muted-foreground" /></div>}
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+                  <p className="text-white text-xs font-medium text-center px-2 truncate w-full">{p.title}</p>
+                  <div className="flex gap-1">
+                    <Button size="icon" variant="secondary" className="w-7 h-7" onClick={() => openEdit(p)}><Pencil className="w-3.5 h-3.5" /></Button>
+                    <Button size="icon" variant="destructive" className="w-7 h-7" onClick={() => { if (confirm('Supprimer ?')) del.mutate(p.id); }}><Trash2 className="w-3.5 h-3.5" /></Button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <Dialog open={open} onOpenChange={o => { if (!o) { setOpen(false); setPendingFile(null); } }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>{editing ? 'Modifier la photo' : 'Ajouter une photo'}</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
-            <Field label="Titre *">
-              <Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} placeholder="Assemblee Generale 2024" />
-            </Field>
-            <Field label="Image">
-              <ImageDropzone currentUrl={form.src ?? form.image_url ?? ''} onFileChange={f => { setPendingFile(f); if (f) set('image_url', ''); }} />
-            </Field>
-            <Field label="Categorie">
-              <Input value={form.category ?? ''} onChange={e => set('category', e.target.value)} placeholder="Evenements, Reunions, Activites..." />
-            </Field>
-            <Field label="Description">
-              <Textarea rows={2} value={form.description ?? ''} onChange={e => set('description', e.target.value)} />
-            </Field>
-            <Field label="Ordre">
-              <Input type="number" min={1} value={form.order ?? 1} onChange={e => set('order', parseInt(e.target.value) || 1)} className="w-24" />
-            </Field>
-            <div className="flex items-center gap-2">
-              <Switch checked={form.is_active ?? true} onCheckedChange={v => set('is_active', v)} id="gal-active" />
-              <Label htmlFor="gal-active" className="text-sm">Visible sur le site</Label>
-            </div>
+            ))}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
-            <Button onClick={() => save.mutate()} disabled={save.isPending || !form.title}>
-              {save.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
-              {editing ? 'Enregistrer' : 'Ajouter'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        )}
+      </div>
+
+      {open && (
+        <FormPanel title={editing ? 'Modifier la photo' : 'Ajouter une photo'} onClose={closeForm} onSave={() => save.mutate()} isSaving={save.isPending} canSave={!!form.title}>
+          <Field label="Titre *">
+            <Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} placeholder="Assemblée Générale 2024" />
+          </Field>
+          <Field label="Image / Vidéo">
+            <MediaDropzone currentUrl={form.src ?? form.image_url ?? ''} onFileChange={f => { setPendingFile(f); if (f) set('image_url', ''); }} acceptVideo />
+          </Field>
+          <Field label="Catégorie">
+            <Input value={form.category ?? ''} onChange={e => set('category', e.target.value)} placeholder="Événements, Réunions, Activités…" />
+          </Field>
+          <Field label="Description">
+            <WysiwygEditor key={editing?.id ?? 'new-gal'} value={form.description ?? ''} onChange={v => set('description', v)} placeholder="Description de la photo…" minHeight="80px" />
+          </Field>
+          <Field label="Ordre">
+            <Input type="number" min={1} value={form.order ?? 1} onChange={e => set('order', parseInt(e.target.value) || 1)} className="w-24" />
+          </Field>
+          <div className="flex items-center gap-2">
+            <Switch checked={form.is_active ?? true} onCheckedChange={v => set('is_active', v)} id="gal-active" />
+            <Label htmlFor="gal-active" className="text-sm">Visible sur le site</Label>
+          </div>
+        </FormPanel>
+      )}
     </div>
   );
 }
 
-// ── PAGE PRINCIPALE ──────────────────────────────────────────────────
+// ── PAGE PRINCIPALE ───────────────────────────────────────────────────
 export default function Cms() {
   return (
     <div className="space-y-6 animate-fade-in">
