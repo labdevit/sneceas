@@ -1,7 +1,11 @@
 import { useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useOutletContext } from 'react-router-dom';
 import { AppSidebar } from './AppSidebar';
 import { TopBar } from './TopBar';
+
+type LayoutContext = {
+  setSidebarCollapsed: (v: boolean) => void;
+};
 
 export function AppLayout() {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -12,9 +16,13 @@ export function AppLayout() {
       <div className={`${isCollapsed ? 'pl-16' : 'pl-64'} transition-all duration-300`}>
         <TopBar />
         <main className="p-6">
-          <Outlet />
+          <Outlet context={{ setSidebarCollapsed: setIsCollapsed } satisfies LayoutContext} />
         </main>
       </div>
     </div>
   );
+}
+
+export function useLayoutContext() {
+  return useOutletContext<LayoutContext>();
 }
