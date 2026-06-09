@@ -486,14 +486,15 @@ export const memberDashboardStats: DashboardStats = {
   ticketsInProgress: 3,
   ticketsClosed: 1,
   ticketsByUrgency: { low: 1, medium: 1, high: 1, critical: 2 },
-  ticketsByStatus: { 
-    new: 1, 
-    info_needed: 1, 
-    processing: 1, 
-    hr_escalated: 1, 
-    hr_pending: 0, 
-    resolved: 1, 
-    closed: 0 
+  ticketsByStatus: {
+    new: 1,
+    info_needed: 1,
+    processing: 1,
+    hr_escalated: 1,
+    hr_pending: 0,
+    resolved: 1,
+    non_resolu: 0,
+    closed: 0
   },
   ticketsByCompany: [],
   recentTickets: tickets.slice(0, 3),
@@ -505,14 +506,15 @@ export const adminDashboardStats: DashboardStats = {
   ticketsInProgress: 45,
   ticketsClosed: 128,
   ticketsByUrgency: { low: 15, medium: 22, high: 18, critical: 8 },
-  ticketsByStatus: { 
-    new: 12, 
-    info_needed: 8, 
-    processing: 15, 
-    hr_escalated: 6, 
-    hr_pending: 4, 
-    resolved: 10, 
-    closed: 8 
+  ticketsByStatus: {
+    new: 12,
+    info_needed: 8,
+    processing: 15,
+    hr_escalated: 6,
+    hr_pending: 4,
+    resolved: 10,
+    non_resolu: 0,
+    closed: 8
   },
   ticketsByCompany: [
     { company: 'Air Sénégal', count: 28 },

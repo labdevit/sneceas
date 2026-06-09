@@ -9,7 +9,7 @@ import type { ApiTicketType, ApiTicketStatus } from '@/lib/api/tickets';
 export function useTicketMeta() {
   const { data: types = [], isLoading: typesLoading } = useQuery({
     queryKey: ['ticket-types'],
-    queryFn: fetchTicketTypes,
+    queryFn: () => fetchTicketTypes(),
     staleTime: 10 * 60 * 1000,
   });
 

@@ -42,13 +42,17 @@ const statusConfig: Record<TicketStatus, {
     class: 'badge-status-hr-escalated', 
     icon: Clock 
   },
-  resolved: { 
-    class: 'badge-status-resolved', 
-    icon: CheckCircle2 
+  resolved: {
+    class: 'badge-status-resolved',
+    icon: CheckCircle2
   },
-  closed: { 
-    class: 'badge-status-closed', 
-    icon: XCircle 
+  non_resolu: {
+    class: 'badge-status-closed',
+    icon: XCircle
+  },
+  closed: {
+    class: 'badge-status-closed',
+    icon: XCircle
   },
 };
 

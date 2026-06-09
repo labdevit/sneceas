@@ -1,4 +1,4 @@
-import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { Navigate, Outlet, useLocation, useOutletContext } from "react-router-dom";
 import { useAuth, type RoleCode } from "@/contexts/AuthContext";
 
 interface ProtectedRouteProps {
@@ -7,28 +7,20 @@ interface ProtectedRouteProps {
   children?: React.ReactNode;
 }
 
-/**
- * Wraps routes that require authentication.
- * Optionally restricts to specific role_codes (ACL).
- *
- * Usage in App.tsx:
- *   <Route element={<ProtectedRoute />}>                             ← any authenticated user
- *   <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>    ← admin only
- *   <Route element={<ProtectedRoute allowedRoles={["delegate", "admin"]} />}> ← multiple roles
- */
 export function ProtectedRoute({ allowedRoles, children }: ProtectedRouteProps) {
   const { isAuthenticated, hasRole } = useAuth();
   const location = useLocation();
+  // Forward the parent outlet context so nested pages (e.g. Cms) can still
+  // call useLayoutContext() even when wrapped by a role-gated ProtectedRoute.
+  const outletContext = useOutletContext();
 
-  // Not logged in → redirect to /login
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Logged in but wrong role → redirect to home (or a 403 page)
   if (allowedRoles && allowedRoles.length > 0 && !hasRole(...allowedRoles)) {
     return <Navigate to="/" replace />;
   }
 
-  return children ? <>{children}</> : <Outlet />;
+  return children ? <>{children}</> : <Outlet context={outletContext} />;
 }

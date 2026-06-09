@@ -90,8 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const hasRole = useCallback(
     (...roleCodes: RoleCode[]) => {
-      // super_admin ou is_superuser a accès à tout
-      if (auth.user.is_superuser) return true;
+      if (auth.user?.is_superuser) return true;
       if (!auth.user?.roles?.length) return false;
       return auth.user.roles.some((r) => roleCodes.includes(r.role_code));
     },
