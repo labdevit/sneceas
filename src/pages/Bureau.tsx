@@ -38,6 +38,7 @@ import {
   fetchBureaux,
   createBureau,
   updateBureau,
+  deleteBureau,
   addBureauMember,
   removeBureauMember,
   type ApiBureau,
@@ -77,6 +78,7 @@ export default function Bureau() {
   const [newMemberUserId, setNewMemberUserId] = useState('');
   const [newMemberFunction, setNewMemberFunction] = useState('');
   const [memberToRemove, setMemberToRemove] = useState<string | null>(null);
+  const [bureauToDelete, setBureauToDelete] = useState<ApiBureau | null>(null);
 
   const selectedBureau = useMemo(
     () => bureaux.find((b) => b.id === selectedId) ?? bureaux[0],
@@ -132,6 +134,17 @@ export default function Bureau() {
       setMemberToRemove(null);
     },
     onError: () => toast({ title: 'Erreur lors du retrait', variant: 'destructive' }),
+  });
+
+  const deleteBureauMutation = useMutation({
+    mutationFn: deleteBureau,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bureaux'] });
+      setSelectedId('');
+      setBureauToDelete(null);
+      toast({ title: 'Bureau supprimé' });
+    },
+    onError: () => toast({ title: 'Erreur lors de la suppression', variant: 'destructive' }),
   });
 
   // ── Handlers ───────────────────────────────────────────────
@@ -257,6 +270,14 @@ export default function Bureau() {
                   <Button size="sm" onClick={() => setIsAddMemberOpen(true)}>
                     <Plus className="w-4 h-4 mr-1" />
                     Ajouter un membre
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setBureauToDelete(selectedBureau)}
+                  >
+                    <Trash2 className="w-4 h-4 mr-1" />
+                    Supprimer
                   </Button>
                 </div>
               )}
@@ -453,6 +474,28 @@ export default function Bureau() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Confirmation suppression bureau */}
+      <AlertDialog open={!!bureauToDelete} onOpenChange={(o) => { if (!o) setBureauToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer ce bureau ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Le bureau <strong>{bureauToDelete?.name}</strong> et tous ses membres seront définitivement supprimés.
+              Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => bureauToDelete && deleteBureauMutation.mutate(bureauToDelete.id)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Supprimer définitivement
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Confirmation retrait membre */}
       <AlertDialog open={!!memberToRemove} onOpenChange={(o) => { if (!o) setMemberToRemove(null); }}>
