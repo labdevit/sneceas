@@ -1184,7 +1184,7 @@ export default function TicketDetail() {
                       <SelectValue placeholder="Assigner à un délégué" />
                     </SelectTrigger>
                     <SelectContent>
-                      {delegatesList.map((d) => (
+                      {delegatesList.filter((d) => d.id).map((d) => (
                         <SelectItem key={d.id} value={d.id}>
                           {d.username}
                         </SelectItem>
