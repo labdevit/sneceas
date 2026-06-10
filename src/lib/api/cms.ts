@@ -11,8 +11,14 @@ function h(json = true): Record<string, string> {
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(BASE + path, { headers: h(), ...init });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as Record<string, unknown>).detail as string ?? `HTTP ${res.status}`);
+    const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+    const msg =
+      typeof body.detail === 'string'
+        ? body.detail
+        : Object.entries(body)
+            .map(([k, v]) => `${k}: ${Array.isArray(v) ? (v as string[]).join(', ') : String(v)}`)
+            .join(' | ') || `HTTP ${res.status}`;
+    throw new Error(msg);
   }
   if (res.status === 204) return undefined as T;
   const data = await res.json();
@@ -28,22 +34,50 @@ async function reqForm<T>(method: 'POST' | 'PATCH', path: string, form: FormData
     body: form,
   });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as Record<string, unknown>).detail as string ?? `HTTP ${res.status}`);
+    const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+    const msg =
+      typeof body.detail === 'string'
+        ? body.detail
+        : Object.entries(body)
+            .map(([k, v]) => `${k}: ${Array.isArray(v) ? (v as string[]).join(', ') : String(v)}`)
+            .join(' | ') || `HTTP ${res.status}`;
+    throw new Error(msg);
   }
   if (res.status === 204) return undefined as T;
   return res.json();
 }
 
-export function buildForm(data: Record<string, unknown>, file?: { field: string; file: File; clearField?: string }): FormData {
+/**
+ * Build FormData from a plain object.
+ * alwaysSkip: fields to never include (file fields, computed/read-only props).
+ */
+export function buildForm(
+  data: Record<string, unknown>,
+  file?: { field: string; file: File; clearField?: string },
+  alwaysSkip: string[] = [],
+): FormData {
   const fd = new FormData();
   Object.entries(data).forEach(([k, v]) => {
+    if (alwaysSkip.includes(k)) return;
     if (file && k === file.field) return;
     if (file?.clearField && k === file.clearField) { fd.append(k, ''); return; }
     if (v !== null && v !== undefined && v !== '') fd.append(k, String(v));
   });
   if (file) fd.append(file.field, file.file);
   return fd;
+}
+
+// Fields that are file objects on the backend — never serialize as text on PATCH
+const ARTICLE_SKIP = ['id', 'cover', 'cover_image', 'tag_list', 'created_at', 'updated_at'];
+const EVENT_SKIP   = ['id', 'cover', 'cover_image', 'created_at', 'updated_at'];
+const GALLERY_SKIP = ['id', 'image', 'src', 'created_at', 'updated_at', 'media'];
+
+function stripKeys(data: Record<string, unknown>, keys: string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (!keys.includes(k)) out[k] = v;
+  }
+  return out;
 }
 
 export interface CmsSlide {
@@ -87,7 +121,7 @@ export const cmsSlides = {
   update: (id: string, data: Partial<CmsSlide>, file?: File) =>
     file
       ? reqForm<CmsSlide>('PATCH', `/cms/slides/${id}/`, buildForm(data as Record<string, unknown>, { field: 'image', file, clearField: 'image_url' }))
-      : req<CmsSlide>(`/cms/slides/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
+      : req<CmsSlide>(`/cms/slides/${id}/`, { method: 'PATCH', body: JSON.stringify(stripKeys(data as Record<string, unknown>, ['id', 'background', 'image', 'created_at', 'updated_at'])) }),
   remove: (id: string) => req<void>(`/cms/slides/${id}/`, { method: 'DELETE' }),
 };
 
@@ -96,7 +130,7 @@ export const cmsServices = {
   create: (data: Partial<CmsService>) =>
     req<CmsService>('/cms/services/', { method: 'POST', body: JSON.stringify(data) }),
   update: (slug: string, data: Partial<CmsService>) =>
-    req<CmsService>(`/cms/services/${slug}/`, { method: 'PATCH', body: JSON.stringify(data) }),
+    req<CmsService>(`/cms/services/${slug}/`, { method: 'PATCH', body: JSON.stringify(stripKeys(data as Record<string, unknown>, ['id', 'created_at', 'updated_at'])) }),
   remove: (slug: string) => req<void>(`/cms/services/${slug}/`, { method: 'DELETE' }),
 };
 
@@ -108,8 +142,8 @@ export const cmsArticles = {
       : req<CmsArticle>('/cms/articles/', { method: 'POST', body: JSON.stringify(data) }),
   update: (slug: string, data: Partial<CmsArticle>, file?: File) =>
     file
-      ? reqForm<CmsArticle>('PATCH', `/cms/articles/${slug}/`, buildForm(data as Record<string, unknown>, { field: 'cover_image', file, clearField: 'cover_image_url' }))
-      : req<CmsArticle>(`/cms/articles/${slug}/`, { method: 'PATCH', body: JSON.stringify(data) }),
+      ? reqForm<CmsArticle>('PATCH', `/cms/articles/${slug}/`, buildForm(data as Record<string, unknown>, { field: 'cover_image', file, clearField: 'cover_image_url' }, ARTICLE_SKIP))
+      : req<CmsArticle>(`/cms/articles/${slug}/`, { method: 'PATCH', body: JSON.stringify(stripKeys(data as Record<string, unknown>, ARTICLE_SKIP)) }),
   remove: (slug: string) => req<void>(`/cms/articles/${slug}/`, { method: 'DELETE' }),
 };
 
@@ -121,8 +155,8 @@ export const cmsEvents = {
       : req<CmsEvent>('/cms/events/', { method: 'POST', body: JSON.stringify(data) }),
   update: (slug: string, data: Partial<CmsEvent>, file?: File) =>
     file
-      ? reqForm<CmsEvent>('PATCH', `/cms/events/${slug}/`, buildForm(data as Record<string, unknown>, { field: 'cover_image', file, clearField: 'cover_image_url' }))
-      : req<CmsEvent>(`/cms/events/${slug}/`, { method: 'PATCH', body: JSON.stringify(data) }),
+      ? reqForm<CmsEvent>('PATCH', `/cms/events/${slug}/`, buildForm(data as Record<string, unknown>, { field: 'cover_image', file, clearField: 'cover_image_url' }, EVENT_SKIP))
+      : req<CmsEvent>(`/cms/events/${slug}/`, { method: 'PATCH', body: JSON.stringify(stripKeys(data as Record<string, unknown>, EVENT_SKIP)) }),
   remove: (slug: string) => req<void>(`/cms/events/${slug}/`, { method: 'DELETE' }),
 };
 
@@ -134,8 +168,8 @@ export const cmsTeam = {
       : req<CmsTeamMember>('/cms/team/', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: string, data: Partial<CmsTeamMember>, file?: File) =>
     file
-      ? reqForm<CmsTeamMember>('PATCH', `/cms/team/${id}/`, buildForm(data as Record<string, unknown>, { field: 'photo', file, clearField: 'photo_url' }))
-      : req<CmsTeamMember>(`/cms/team/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
+      ? reqForm<CmsTeamMember>('PATCH', `/cms/team/${id}/`, buildForm(data as Record<string, unknown>, { field: 'photo', file, clearField: 'photo_url' }, ['id', 'avatar', 'photo']))
+      : req<CmsTeamMember>(`/cms/team/${id}/`, { method: 'PATCH', body: JSON.stringify(stripKeys(data as Record<string, unknown>, ['id', 'avatar', 'photo'])) }),
   remove: (id: string) => req<void>(`/cms/team/${id}/`, { method: 'DELETE' }),
 };
 
@@ -167,7 +201,11 @@ export const cmsPartners = {
   create: (data: Partial<CmsPartner>, file?: File) =>
     reqForm<CmsPartner>('POST', '/cms/partners/', buildForm(data as Record<string, unknown>, file ? { field: 'logo', file, clearField: 'logo_url' } : undefined)),
   update: (id: string, data: Partial<CmsPartner>, file?: File) =>
-    reqForm<CmsPartner>('PATCH', `/cms/partners/${id}/`, buildForm(data as Record<string, unknown>, file ? { field: 'logo', file, clearField: 'logo_url' } : undefined)),
+    reqForm<CmsPartner>('PATCH', `/cms/partners/${id}/`, buildForm(
+      data as Record<string, unknown>,
+      file ? { field: 'logo', file, clearField: 'logo_url' } : undefined,
+      ['id', 'logo', 'logo_src', 'created_at', 'updated_at'],
+    )),
   remove: (id: string) => req<void>(`/cms/partners/${id}/`, { method: 'DELETE' }),
   reorder: (ordered_ids: string[]) => req<void>('/cms/partners/reorder/', { method: 'POST', body: JSON.stringify({ ordered_ids }) }),
 };
@@ -196,10 +234,22 @@ export const cmsPublicDocuments = {
     return reqForm<CmsPublicDocument>("POST", "/cms/public-documents/", form);
   },
   update: (id: string, data: Partial<CmsPublicDocument>, file?: File) => {
-    const form = buildForm(data as Record<string, unknown>, file ? { field: "file", file } : undefined);
+    const form = buildForm(
+      data as Record<string, unknown>,
+      file ? { field: "file", file } : undefined,
+      ['id', 'file', 'download_url', 'created_at', 'updated_at'],
+    );
     return reqForm<CmsPublicDocument>("PATCH", `/cms/public-documents/${id}/`, form);
   },
   remove: (id: string) => req<void>(`/cms/public-documents/${id}/`, { method: "DELETE" }),
+};
+
+// -- Galerie ------------------------------------------------------------------
+
+export type CmsGalleryMedia = {
+  id: string;
+  src: string;
+  order: number;
 };
 
 export type CmsGalleryImage = {
@@ -214,6 +264,7 @@ export type CmsGalleryImage = {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  media: CmsGalleryMedia[];
 };
 
 export const cmsGallery = {
@@ -223,8 +274,30 @@ export const cmsGallery = {
     return reqForm<CmsGalleryImage>("POST", "/cms/gallery/", form);
   },
   update: (id: string, data: Partial<CmsGalleryImage>, file?: File) => {
-    const form = buildForm(data as Record<string, unknown>, file ? { field: "image", file, clearField: "image_url" } : undefined);
+    const form = buildForm(
+      data as Record<string, unknown>,
+      file ? { field: "image", file, clearField: "image_url" } : undefined,
+      GALLERY_SKIP,
+    );
     return reqForm<CmsGalleryImage>("PATCH", `/cms/gallery/${id}/`, form);
   },
   remove: (id: string) => req<void>(`/cms/gallery/${id}/`, { method: "DELETE" }),
+  addMedia: (id: string, files: File[]): Promise<CmsGalleryMedia[]> => {
+    const token = localStorage.getItem('snecea_token');
+    const form = new FormData();
+    files.forEach(f => form.append('files', f));
+    return fetch(`${BASE}/cms/gallery/${id}/add_media/`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Token ${token}` } : {},
+      body: form,
+    }).then(async r => {
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({})) as Record<string, unknown>;
+        throw new Error(typeof body.detail === 'string' ? body.detail : `HTTP ${r.status}`);
+      }
+      return r.json();
+    });
+  },
+  removeMedia: (id: string, mediaId: string) =>
+    req<void>(`/cms/gallery/${id}/remove_media/${mediaId}/`, { method: 'DELETE' }),
 };

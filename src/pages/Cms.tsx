@@ -25,8 +25,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useLayoutContext } from '@/components/layout/AppLayout';
 import {
   cmsSlides, cmsServices, cmsArticles, cmsEvents, cmsTeam, cmsContact, cmsPartners, cmsPublicDocuments, cmsGallery,
-  type CmsSlide, type CmsService, type CmsArticle, type CmsEvent, type CmsPartner, type CmsPublicDocument, type CmsGalleryImage,
-  type CmsTeamMember, type CmsContact,
+  type CmsSlide, type CmsService, type CmsArticle, type CmsEvent, type CmsPartner, type CmsPublicDocument,
+  type CmsGalleryImage, type CmsGalleryMedia, type CmsTeamMember, type CmsContact,
 } from '@/lib/api/cms';
 
 function slugify(s: string) {
@@ -1066,7 +1066,7 @@ function DocumentsTab({ onFormChange }: { onFormChange: (open: boolean) => void 
 }
 
 // ── GALERIE ───────────────────────────────────────────────────────────
-const GALLERY_BLANK: Partial<CmsGalleryImage> = { title: '', description: '', image_url: '', category: '', order: 1, is_active: true };
+const GALLERY_BLANK: Partial<CmsGalleryImage> = { title: '', description: '', image_url: '', category: '', order: 1, is_active: true, media: [] };
 
 function GalleryTab({ onFormChange }: { onFormChange: (open: boolean) => void }) {
   const { toast } = useToast();
@@ -1075,6 +1075,9 @@ function GalleryTab({ onFormChange }: { onFormChange: (open: boolean) => void })
   const [isNew, setIsNew] = useState(false);
   const [form, setForm] = useState<Partial<CmsGalleryImage>>(GALLERY_BLANK);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [extraFiles, setExtraFiles] = useState<File[]>([]);
+  const [uploadingExtra, setUploadingExtra] = useState(false);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
 
   const set = (k: keyof CmsGalleryImage, v: unknown) => setForm(f => ({ ...f, [k]: v }));
   const inv = () => qc.invalidateQueries({ queryKey: ['cms-gallery'] });
@@ -1082,43 +1085,86 @@ function GalleryTab({ onFormChange }: { onFormChange: (open: boolean) => void })
   const open = isNew || editing !== null;
 
   const save = useMutation({
-    mutationFn: () => editing ? cmsGallery.update(editing.id, form, pendingFile ?? undefined) : cmsGallery.create(form, pendingFile ?? undefined),
-    onSuccess: () => { inv(); closeForm(); toast({ title: editing ? 'Photo modifiée' : 'Photo ajoutée' }); },
-    onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
+    mutationFn: async () => {
+      const saved = editing
+        ? await cmsGallery.update(editing.id, form, pendingFile ?? undefined)
+        : await cmsGallery.create(form, pendingFile ?? undefined);
+      if (extraFiles.length > 0) {
+        setUploadingExtra(true);
+        await cmsGallery.addMedia(saved.id, extraFiles);
+        setUploadingExtra(false);
+      }
+      return saved;
+    },
+    onSuccess: () => { inv(); closeForm(); toast({ title: editing ? 'Entrée modifiée' : 'Entrée ajoutée' }); },
+    onError: (e: Error) => { setUploadingExtra(false); toast({ title: 'Erreur', description: e.message, variant: 'destructive' }); },
   });
   const del = useMutation({
     mutationFn: (id: string) => cmsGallery.remove(id),
-    onSuccess: () => { inv(); toast({ title: 'Photo supprimée' }); },
+    onSuccess: () => { inv(); toast({ title: 'Entrée supprimée' }); },
+    onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
+  });
+  const delMedia = useMutation({
+    mutationFn: ({ entryId, mediaId }: { entryId: string; mediaId: string }) =>
+      cmsGallery.removeMedia(entryId, mediaId),
+    onSuccess: () => {
+      inv();
+      // Refresh local form.media optimistically
+      setForm(f => ({ ...f, media: (f.media ?? []).filter(m => m.id !== delMedia.variables?.mediaId) }));
+      toast({ title: 'Média supprimé' });
+    },
     onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
   });
 
-  function openNew() { setEditing(null); setIsNew(true); setForm(GALLERY_BLANK); setPendingFile(null); onFormChange(true); }
-  function openEdit(p: CmsGalleryImage) { setEditing(p); setIsNew(false); setForm(p); setPendingFile(null); onFormChange(true); }
-  function closeForm() { setEditing(null); setIsNew(false); onFormChange(false); }
+  function openNew() { setEditing(null); setIsNew(true); setForm({ ...GALLERY_BLANK, order: items.length + 1 }); setPendingFile(null); setExtraFiles([]); onFormChange(true); }
+  function openEdit(p: CmsGalleryImage) { setEditing(p); setIsNew(false); setForm(p); setPendingFile(null); setExtraFiles([]); onFormChange(true); }
+  function closeForm() { setEditing(null); setIsNew(false); setExtraFiles([]); onFormChange(false); }
+
+  function handleExtraFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    setExtraFiles(prev => [...prev, ...files]);
+    e.target.value = '';
+  }
+
+  const existingMedia: CmsGalleryMedia[] = form.media ?? [];
+  const totalMedia = existingMedia.length + extraFiles.length;
 
   return (
     <div className={open ? GRID_OPEN : GRID_CLOSED}>
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-1 mb-1">
-          <p className="text-xs text-muted-foreground">{items.length} photo{items.length !== 1 ? 's' : ''}</p>
+          <p className="text-xs text-muted-foreground">{items.length} entrée{items.length !== 1 ? 's' : ''}</p>
           <Button size="sm" className="h-7 text-xs px-2" onClick={openNew}><Plus className="w-3 h-3 mr-1" />Ajouter</Button>
         </div>
         {isLoading ? <div className="flex justify-center py-6"><Loader2 className="animate-spin w-4 h-4 text-muted-foreground" /></div>
-          : items.length === 0 ? <p className="text-center py-8 text-xs text-muted-foreground">Aucune photo.</p>
+          : items.length === 0 ? <p className="text-center py-8 text-xs text-muted-foreground">Aucune entrée.</p>
           : open ? (
             <div className="space-y-1">
-              {items.map(p => <CompactRow key={p.id} label={p.title} sub={p.category || undefined} thumb={p.src || undefined} isActive={editing?.id === p.id} onEdit={() => openEdit(p)} onDelete={() => del.mutate(p.id)} />)}
+              {items.map(p => (
+                <CompactRow
+                  key={p.id}
+                  label={p.title}
+                  sub={`${p.category || ''}${p.media?.length ? ` · ${p.media.length + 1} fichier(s)` : ''}`}
+                  thumb={p.src || undefined}
+                  isActive={editing?.id === p.id}
+                  onEdit={() => openEdit(p)}
+                  onDelete={() => del.mutate(p.id)}
+                />
+              ))}
             </div>
           ) : (
             <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
               {items.map(p => (
                 <div key={p.id} className="group relative aspect-square rounded-xl overflow-hidden border bg-muted">
                   {p.src ? <img src={p.src} alt={p.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Image className="w-8 h-8 text-muted-foreground" /></div>}
+                  {(p.media?.length ?? 0) > 0 && (
+                    <div className="absolute top-1 right-1 bg-black/70 text-white text-xs rounded-full px-1.5 py-0.5">+{p.media!.length}</div>
+                  )}
                   <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
                     <p className="text-white text-xs font-medium text-center px-2 truncate w-full">{p.title}</p>
                     <div className="flex gap-1">
                       <Button size="icon" variant="secondary" className="w-7 h-7" onClick={() => openEdit(p)}><Pencil className="w-3.5 h-3.5" /></Button>
-                      <Button size="icon" variant="destructive" className="w-7 h-7" onClick={() => { if (confirm('Supprimer ?')) del.mutate(p.id); }}><Trash2 className="w-3.5 h-3.5" /></Button>
+                      <Button size="icon" variant="destructive" className="w-7 h-7" onClick={() => { if (confirm('Supprimer l\'entrée et tous ses médias ?')) del.mutate(p.id); }}><Trash2 className="w-3.5 h-3.5" /></Button>
                     </div>
                   </div>
                 </div>
@@ -1128,11 +1174,60 @@ function GalleryTab({ onFormChange }: { onFormChange: (open: boolean) => void })
       </div>
 
       {open && (
-        <FormPanel title={editing ? 'Modifier la photo' : 'Ajouter une photo'} onClose={closeForm} onSave={() => save.mutate()} isSaving={save.isPending} canSave={!!form.title}>
+        <FormPanel
+          title={editing ? 'Modifier l\'entrée galerie' : 'Nouvelle entrée galerie'}
+          onClose={closeForm}
+          onSave={() => save.mutate()}
+          isSaving={save.isPending || uploadingExtra}
+          canSave={!!form.title}
+        >
           <Field label="Titre *"><Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} placeholder="Assemblée Générale 2024" /></Field>
-          <Field label="Image / Vidéo">
+          <Field label="Image principale">
             <MediaDropzone currentUrl={form.src ?? form.image_url ?? ''} onFileChange={f => { setPendingFile(f); if (f) set('image_url', ''); }} acceptVideo />
           </Field>
+
+          {/* Multi-media section */}
+          <Field label={`Médias supplémentaires${totalMedia > 0 ? ` (${totalMedia})` : ''}`}>
+            {/* Existing saved media */}
+            {existingMedia.length > 0 && (
+              <div className="grid grid-cols-3 gap-2 mb-2">
+                {existingMedia.map(m => (
+                  <div key={m.id} className="relative aspect-square rounded-lg overflow-hidden border bg-muted group">
+                    {m.src && <img src={m.src} alt="" className="w-full h-full object-cover" />}
+                    <button
+                      type="button"
+                      className="absolute top-0.5 right-0.5 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={() => editing && delMedia.mutate({ entryId: editing.id, mediaId: m.id })}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* Pending new files */}
+            {extraFiles.length > 0 && (
+              <div className="grid grid-cols-3 gap-2 mb-2">
+                {extraFiles.map((f, i) => (
+                  <div key={i} className="relative aspect-square rounded-lg overflow-hidden border bg-muted group">
+                    <img src={URL.createObjectURL(f)} alt="" className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      className="absolute top-0.5 right-0.5 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={() => setExtraFiles(prev => prev.filter((_, j) => j !== i))}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <Button type="button" variant="outline" size="sm" className="w-full text-xs" onClick={() => mediaInputRef.current?.click()}>
+              <Plus className="w-3 h-3 mr-1" />Ajouter des fichiers
+            </Button>
+            <input ref={mediaInputRef} type="file" multiple accept="image/*,video/*" className="hidden" onChange={handleExtraFiles} />
+          </Field>
+
           <Field label="Catégorie"><Input value={form.category ?? ''} onChange={e => set('category', e.target.value)} placeholder="Événements, Réunions…" /></Field>
           <Field label="Description">
             <WysiwygEditor key={editing?.id ?? 'new-gal'} value={form.description ?? ''} onChange={v => set('description', v)} placeholder="Description…" minHeight="80px" />
