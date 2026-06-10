@@ -200,7 +200,7 @@ const GRID_OPEN = 'grid gap-4 lg:grid-cols-[200px_1fr] items-start';
 const GRID_CLOSED = '';
 
 // ── SLIDES ───────────────────────────────────────────────────────────
-const SLIDE_BLANK: Partial<CmsSlide> = { title: '', subtitle: '', badge_text: '', image_url: '', cta_label: '', cta_url: '', cta_label_secondary: '', cta_url_secondary: '', order: 1 };
+const SLIDE_BLANK: Partial<CmsSlide> = { title: '', subtitle: '', badge_text: '', image_url: '', cta_label: '', cta_url: '', cta_label_secondary: '', cta_url_secondary: '', order: 1, is_active: true };
 
 function SlidesTab({ onFormChange }: { onFormChange: (open: boolean) => void }) {
   const { toast } = useToast();
@@ -270,7 +270,10 @@ function SlidesTab({ onFormChange }: { onFormChange: (open: boolean) => void }) 
                           <span className="w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center shrink-0">{s.order}</span>
                           {s.background && <img src={s.background} alt="" className="w-14 h-9 object-cover rounded shrink-0" />}
                           <div className="min-w-0 flex-1">
-                            <p className="font-medium text-sm truncate">{s.title}</p>
+                            <div className="flex items-center gap-1.5">
+                              <p className="font-medium text-sm truncate">{s.title}</p>
+                              <Badge variant={s.is_active ? 'default' : 'secondary'} className="text-[10px] shrink-0">{s.is_active ? 'Actif' : 'Inactif'}</Badge>
+                            </div>
                             {s.badge_text && <p className="text-xs text-muted-foreground truncate">{s.badge_text}</p>}
                           </div>
                           <div className="flex gap-1 shrink-0">
@@ -306,6 +309,13 @@ function SlidesTab({ onFormChange }: { onFormChange: (open: boolean) => void }) 
             <Field label="Lien 2"><Input value={form.cta_url_secondary ?? ''} onChange={e => set('cta_url_secondary', e.target.value)} placeholder="/services" /></Field>
           </div>
           <Field label="Ordre"><Input type="number" min={1} value={form.order ?? 1} onChange={e => set('order', parseInt(e.target.value) || 1)} className="w-24" /></Field>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => set('is_active', !form.is_active)}
+              className={cn('w-10 h-6 rounded-full transition-colors flex items-center px-0.5', form.is_active ? 'bg-primary' : 'bg-muted')}>
+              <span className={cn('w-5 h-5 rounded-full bg-white shadow transition-transform', form.is_active ? 'translate-x-4' : 'translate-x-0')} />
+            </button>
+            <Label>Slide visible sur le site</Label>
+          </div>
         </FormPanel>
       )}
     </div>
@@ -314,7 +324,7 @@ function SlidesTab({ onFormChange }: { onFormChange: (open: boolean) => void }) 
 
 // ── SERVICES ─────────────────────────────────────────────────────────
 const ICONS = ['Shield', 'Scale', 'Users', 'BookOpen', 'Handshake', 'HeartHandshake', 'Briefcase', 'FileText', 'Star', 'Building2'];
-const SVC_BLANK: Partial<CmsService> = { title: '', slug: '', icon: 'Shield', short_description: '', body: '', order: 1 };
+const SVC_BLANK: Partial<CmsService> = { title: '', slug: '', icon: 'Shield', short_description: '', body: '', order: 1, is_active: true };
 
 function ServicesTab({ onFormChange }: { onFormChange: (open: boolean) => void }) {
   const { toast } = useToast();
@@ -414,6 +424,13 @@ function ServicesTab({ onFormChange }: { onFormChange: (open: boolean) => void }
             <WysiwygEditor key={`${editing?.id ?? 'new-svc'}-body`} value={form.body ?? ''} onChange={v => set('body', v)} placeholder="Description complète…" onUploadImage={uploadBodyImage} />
           </Field>
           <Field label="Ordre"><Input type="number" min={1} value={form.order ?? 1} onChange={e => set('order', parseInt(e.target.value) || 1)} className="w-24" /></Field>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => set('is_active', !form.is_active)}
+              className={cn('w-10 h-6 rounded-full transition-colors flex items-center px-0.5', form.is_active ? 'bg-primary' : 'bg-muted')}>
+              <span className={cn('w-5 h-5 rounded-full bg-white shadow transition-transform', form.is_active ? 'translate-x-4' : 'translate-x-0')} />
+            </button>
+            <Label>Service visible sur le site</Label>
+          </div>
         </FormPanel>
       )}
     </div>

@@ -85,10 +85,12 @@ export interface CmsSlide {
   background: string; image_url: string;
   cta_label: string; cta_url: string;
   cta_label_secondary: string; cta_url_secondary: string; order: number;
+  is_active: boolean;
 }
 export interface CmsService {
   id: string; title: string; slug: string; icon: string;
   short_description: string; body: string; order: number;
+  is_active: boolean;
 }
 export interface CmsArticle {
   id: string; title: string; slug: string; excerpt: string;
