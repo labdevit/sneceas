@@ -301,3 +301,23 @@ export const cmsGallery = {
   removeMedia: (id: string, mediaId: string) =>
     req<void>(`/cms/gallery/${id}/remove_media/${mediaId}/`, { method: 'DELETE' }),
 };
+
+export const cmsMedia = {
+  uploadImage: (file: File): Promise<string> => {
+    const token = localStorage.getItem('snecea_token');
+    const form = new FormData();
+    form.append('file', file);
+    return fetch(`${BASE}/cms/media/upload/`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Token ${token}` } : {},
+      body: form,
+    }).then(async r => {
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({})) as Record<string, unknown>;
+        throw new Error(typeof body.detail === 'string' ? body.detail : `HTTP ${r.status}`);
+      }
+      const data = await r.json() as { url: string };
+      return data.url;
+    });
+  },
+};

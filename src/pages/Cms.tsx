@@ -24,10 +24,12 @@ import { WysiwygEditor } from '@/components/ui/wysiwyg';
 import { useToast } from '@/hooks/use-toast';
 import { useLayoutContext } from '@/components/layout/AppLayout';
 import {
-  cmsSlides, cmsServices, cmsArticles, cmsEvents, cmsTeam, cmsContact, cmsPartners, cmsPublicDocuments, cmsGallery,
+  cmsSlides, cmsServices, cmsArticles, cmsEvents, cmsTeam, cmsContact, cmsPartners, cmsPublicDocuments, cmsGallery, cmsMedia,
   type CmsSlide, type CmsService, type CmsArticle, type CmsEvent, type CmsPartner, type CmsPublicDocument,
   type CmsGalleryImage, type CmsGalleryMedia, type CmsTeamMember, type CmsContact,
 } from '@/lib/api/cms';
+
+const uploadBodyImage = (file: File) => cmsMedia.uploadImage(file);
 
 function slugify(s: string) {
   return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -409,7 +411,7 @@ function ServicesTab({ onFormChange }: { onFormChange: (open: boolean) => void }
             <WysiwygEditor key={`${editing?.id ?? 'new-svc'}-short`} value={form.short_description ?? ''} onChange={v => set('short_description', v)} placeholder="Courte description…" minHeight="80px" />
           </Field>
           <Field label="Description complète">
-            <WysiwygEditor key={`${editing?.id ?? 'new-svc'}-body`} value={form.body ?? ''} onChange={v => set('body', v)} placeholder="Description complète…" />
+            <WysiwygEditor key={`${editing?.id ?? 'new-svc'}-body`} value={form.body ?? ''} onChange={v => set('body', v)} placeholder="Description complète…" onUploadImage={uploadBodyImage} />
           </Field>
           <Field label="Ordre"><Input type="number" min={1} value={form.order ?? 1} onChange={e => set('order', parseInt(e.target.value) || 1)} className="w-24" /></Field>
         </FormPanel>
@@ -497,7 +499,7 @@ function ArticlesTab({ onFormChange }: { onFormChange: (open: boolean) => void }
             <WysiwygEditor key={`${editing?.id ?? 'new-art'}-excerpt`} value={form.excerpt ?? ''} onChange={v => set('excerpt', v)} placeholder="Résumé de l'article…" minHeight="80px" />
           </Field>
           <Field label="Contenu">
-            <WysiwygEditor key={`${editing?.id ?? 'new-art'}-body`} value={form.body ?? ''} onChange={v => set('body', v)} placeholder="Contenu de l'article…" />
+            <WysiwygEditor key={`${editing?.id ?? 'new-art'}-body`} value={form.body ?? ''} onChange={v => set('body', v)} placeholder="Contenu de l'article…" onUploadImage={uploadBodyImage} />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Auteur"><Input value={form.author_name ?? ''} onChange={e => set('author_name', e.target.value)} /></Field>
@@ -608,7 +610,7 @@ function EventsTab({ onFormChange }: { onFormChange: (open: boolean) => void }) 
           <Field label="Titre *"><Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} /></Field>
           {!editing && <Field label="Slug"><Input value={form.slug || slugify(form.title ?? '')} onChange={e => set('slug', e.target.value)} /></Field>}
           <Field label="Description">
-            <WysiwygEditor key={`${editing?.id ?? 'new-evt'}-desc`} value={form.description ?? ''} onChange={v => set('description', v)} placeholder="Description…" />
+            <WysiwygEditor key={`${editing?.id ?? 'new-evt'}-desc`} value={form.description ?? ''} onChange={v => set('description', v)} placeholder="Description…" onUploadImage={uploadBodyImage} />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Lieu"><Input value={form.location ?? ''} onChange={e => set('location', e.target.value)} /></Field>

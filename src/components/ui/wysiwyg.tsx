@@ -1,13 +1,16 @@
+import { useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
 import Placeholder from '@tiptap/extension-placeholder';
 import Link from '@tiptap/extension-link';
+import Image from '@tiptap/extension-image';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   List, ListOrdered, AlignLeft, AlignCenter, AlignRight,
   Link2, Heading2, Heading3, Undo, Redo, Unlink,
+  ImagePlus, Upload,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -17,6 +20,7 @@ interface Props {
   placeholder?: string;
   minHeight?: string;
   editorKey?: string | number;
+  onUploadImage?: (file: File) => Promise<string>;
 }
 
 function ToolBtn({
@@ -44,7 +48,9 @@ function ToolBtn({
   );
 }
 
-export function WysiwygEditor({ value, onChange, placeholder, minHeight = '160px' }: Props) {
+export function WysiwygEditor({ value, onChange, placeholder, minHeight = '160px', onUploadImage }: Props) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -52,6 +58,7 @@ export function WysiwygEditor({ value, onChange, placeholder, minHeight = '160px
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       Placeholder.configure({ placeholder: placeholder ?? 'Écrivez ici…' }),
       Link.configure({ openOnClick: false, HTMLAttributes: { class: 'text-primary underline' } }),
+      Image.configure({ inline: false, allowBase64: false, HTMLAttributes: { class: 'max-w-full rounded my-2' } }),
     ],
     content: value || '',
     onUpdate({ editor }) {
@@ -64,6 +71,23 @@ export function WysiwygEditor({ value, onChange, placeholder, minHeight = '160px
   function addLink() {
     const url = prompt('URL du lien :');
     if (url) editor.chain().focus().setLink({ href: url }).run();
+  }
+
+  function insertImageUrl() {
+    const url = prompt('URL de l\'image :');
+    if (url) editor.chain().focus().setImage({ src: url }).run();
+  }
+
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !onUploadImage) return;
+    e.target.value = '';
+    try {
+      const url = await onUploadImage(file);
+      editor.chain().focus().setImage({ src: url }).run();
+    } catch (err: unknown) {
+      alert('Échec upload image : ' + (err instanceof Error ? err.message : String(err)));
+    }
   }
 
   return (
@@ -139,12 +163,35 @@ export function WysiwygEditor({ value, onChange, placeholder, minHeight = '160px
             <Unlink className="w-3.5 h-3.5" />
           </ToolBtn>
         )}
+        <span className="w-px bg-border mx-1 self-stretch" />
+
+        {/* Image — URL */}
+        <ToolBtn title="Insérer une image par URL" onClick={insertImageUrl}>
+          <ImagePlus className="w-3.5 h-3.5" />
+        </ToolBtn>
+
+        {/* Image — Upload (only shown when onUploadImage is provided) */}
+        {onUploadImage && (
+          <>
+            <ToolBtn title="Téléverser une image depuis l'ordinateur"
+              onClick={() => fileInputRef.current?.click()}>
+              <Upload className="w-3.5 h-3.5" />
+            </ToolBtn>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleImageUpload}
+            />
+          </>
+        )}
       </div>
 
       {/* Content */}
       <EditorContent
         editor={editor}
-        className="prose prose-sm dark:prose-invert max-w-none px-3 py-2 focus:outline-none [&_.tiptap]:outline-none"
+        className="prose prose-sm dark:prose-invert max-w-none px-3 py-2 focus:outline-none [&_.tiptap]:outline-none [&_.tiptap_img]:max-w-full [&_.tiptap_img]:rounded [&_.tiptap_img]:my-2"
         style={{ minHeight }}
       />
     </div>

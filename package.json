@@ -47,6 +47,7 @@
     "@supabase/supabase-js": "^2.93.3",
     "@tanstack/react-query": "^5.83.0",
     "@tiptap/extension-color": "^3.20.1",
+    "@tiptap/extension-image": "^3.26.0",
     "@tiptap/extension-placeholder": "^3.20.1",
     "@tiptap/extension-text-align": "^3.20.1",
     "@tiptap/extension-text-style": "^3.20.1",
