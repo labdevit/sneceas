@@ -41,7 +41,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { UrgencyBadge } from '@/components/ui/UrgencyBadge';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { authenticatedDownload, resolveFileUrl } from '@/lib/api';
-import { fetchTicket, updateTicket, type ApiTicket } from '@/lib/api/tickets';
+import { fetchTicket, updateTicket, contestTicket, fetchContestations, type ApiTicket, type ApiContestation } from '@/lib/api/tickets';
 import { fetchUsers } from '@/lib/api/users';
 import { fetchConversations, createConversation } from '@/lib/api/conversations';
 import { fetchTicketHRInteractions } from '@/lib/api/hr';
@@ -53,9 +53,12 @@ import { fetchQuickActions, type ApiQuickAction } from '@/lib/api/quickActions';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from '@/components/ui/dialog';
+import { AlertTriangle as AlertIcon } from 'lucide-react';
 import { fetchPoles } from '@/lib/api/poles';
 import { fetchDelegates } from '@/lib/api/delegates';
 import { useTicketMeta } from '@/hooks/useTicketMeta';
@@ -351,9 +354,35 @@ export default function TicketDetail() {
     delegateId: '',
   });
   const [isClassifying, setIsClassifying] = useState(false);
+  const [contestOpen, setContestOpen] = useState(false);
+  const [contestReason, setContestReason] = useState('');
+  const [isContesting, setIsContesting] = useState(false);
+
+  async function submitContest() {
+    if (!id || !contestReason.trim()) return;
+    setIsContesting(true);
+    try {
+      await contestTicket(id, contestReason.trim());
+      toast({ title: 'Contestation soumise', description: 'Le pôle examinera votre demande.' });
+      queryClient.invalidateQueries({ queryKey: ['contestations', id] });
+      setContestOpen(false);
+      setContestReason('');
+    } catch (e: unknown) {
+      toast({ title: 'Erreur', description: e instanceof Error ? e.message : 'Impossible de soumettre la contestation.', variant: 'destructive' });
+    } finally {
+      setIsContesting(false);
+    }
+  }
 
   // Sort statuses by order for timeline
   const sortedStatuses = [...statuses].sort((a, b) => a.order - b.order);
+
+  const isTerminal = !!(sortedStatuses.find(s => s.id === ticket?.status)?.is_terminal);
+  const { data: contestations = [] } = useQuery<ApiContestation[]>({
+    queryKey: ['contestations', id],
+    queryFn: () => fetchContestations(id!),
+    enabled: !!id && isTerminal,
+  });
 
   // Build timeline steps based on ticket type
   const currentCode = statuses.find(s => s.id === ticket?.status)?.code ?? '';
@@ -640,6 +669,75 @@ export default function TicketDetail() {
               closedAt={(ticket as any).closed_at ?? null}
             />
           )}
+
+          {/* Contestation – visible quand le ticket est clôturé */}
+          {isTerminal && (
+            <div className="bg-card rounded-xl border shadow-card p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-500" />
+                  <h3 className="font-semibold text-sm">Contester la résolution</h3>
+                </div>
+                {!contestations.some(c => c.status === 'pending') && (
+                  <Button size="sm" variant="outline" className="border-amber-400 text-amber-700 hover:bg-amber-50" onClick={() => setContestOpen(true)}>
+                    Contester
+                  </Button>
+                )}
+              </div>
+              {contestations.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Aucune contestation pour ce ticket.</p>
+              ) : (
+                <div className="space-y-2">
+                  {contestations.map(c => (
+                    <div key={c.id} className="rounded-lg border p-3 text-sm space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Badge variant={c.status === 'pending' ? 'secondary' : c.status === 'accepted' ? 'default' : 'destructive'} className="text-xs">
+                          {c.status_label}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">{new Date(c.created_at).toLocaleDateString('fr-FR')}</span>
+                      </div>
+                      <p className="text-muted-foreground">{c.reason}</p>
+                      {c.response && (
+                        <p className="text-xs border-l-2 border-primary pl-2 mt-1">{c.response}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Dialog — formulaire contestation */}
+          <Dialog open={contestOpen} onOpenChange={setContestOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Contester la résolution</DialogTitle>
+                <DialogDescription>
+                  Expliquez pourquoi vous n'êtes pas satisfait(e) de la clôture de ce dossier. Le chef de pôle examinera votre demande.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground uppercase tracking-wide">Motif *</Label>
+                <Textarea
+                  value={contestReason}
+                  onChange={e => setContestReason(e.target.value)}
+                  placeholder="Décrivez votre contestation..."
+                  rows={4}
+                />
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setContestOpen(false)}>Annuler</Button>
+                <Button
+                  onClick={submitContest}
+                  disabled={!contestReason.trim() || isContesting}
+                  className="bg-amber-500 hover:bg-amber-600 text-white"
+                >
+                  {isContesting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                  Soumettre la contestation
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {/* Échanges – masqué pour l'instant
           <div className="bg-card rounded-xl border shadow-card">

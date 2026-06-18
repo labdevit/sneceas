@@ -107,6 +107,35 @@ export const fetchTicketTypes = async (params?: Record<string, string | undefine
 export const fetchTicketStatuses = async () =>
   unwrap(await apiGet<Paginated<ApiTicketStatus> | ApiTicketStatus[]>('/ticket-statuses/'));
 
+// ── Contestation endpoints ────────────────────────────────────────────
+
+export interface ApiContestation {
+  id: string;
+  ticket: string;
+  reason: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  status_label: string;
+  response: string;
+  responded_by: number | null;
+  responded_by_name: string | null;
+  responded_at: string | null;
+  created_by: number | null;
+  created_by_name: string | null;
+  created_at: string;
+}
+
+export const contestTicket = (ticketId: string, reason: string) =>
+  apiPost<ApiContestation>(`/tickets/${ticketId}/contester/`, { reason });
+
+export const fetchContestations = (ticketId: string) =>
+  apiGet<ApiContestation[]>(`/tickets/${ticketId}/contestations/`);
+
+export const respondContestation = (
+  contestationId: string,
+  data: { status: 'accepted' | 'rejected'; response?: string },
+) =>
+  apiPatch<ApiContestation>(`/tickets/contestations/${contestationId}/respond`, data);
+
 // ── Closing report endpoints ─────────────────────────────────────────
 
 export interface ClosingReportTemplate {

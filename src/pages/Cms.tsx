@@ -14,6 +14,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
@@ -552,7 +553,7 @@ function ArticlesTab({ onFormChange }: { onFormChange: (open: boolean) => void }
 }
 
 // ── EVENTS ───────────────────────────────────────────────────────────
-const EVT_BLANK: Partial<CmsEvent> = { title: '', slug: '', description: '', cover_image_url: '', location: '', address: '', start_date: '', end_date: '', status: 'upcoming', is_featured: false, registration_url: '' };
+const EVT_BLANK: Partial<CmsEvent> = { title: '', slug: '', description: '', body: '', cover_image_url: '', location: '', address: '', start_date: '', end_date: '', status: 'upcoming', is_featured: false, registration_url: '' };
 
 function EventsTab({ onFormChange }: { onFormChange: (open: boolean) => void }) {
   const { toast } = useToast();
@@ -626,8 +627,11 @@ function EventsTab({ onFormChange }: { onFormChange: (open: boolean) => void }) 
           </Field>
           <Field label="Titre *"><Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} /></Field>
           {!editing && <Field label="Slug"><Input value={form.slug || slugify(form.title ?? '')} onChange={e => set('slug', e.target.value)} /></Field>}
-          <Field label="Description">
-            <WysiwygEditor key={`${editing?.id ?? 'new-evt'}-desc`} value={form.description ?? ''} onChange={v => set('description', v)} placeholder="Description…" onUploadImage={uploadBodyImage} />
+          <Field label="Résumé (texte court)">
+            <Textarea value={form.description ?? ''} onChange={e => set('description', e.target.value)} placeholder="Courte description affichée dans les listes…" rows={2} />
+          </Field>
+          <Field label="Contenu détaillé (images, vidéos, mise en forme…)">
+            <WysiwygEditor key={`${editing?.id ?? 'new-evt'}-body`} value={form.body ?? ''} onChange={v => set('body', v)} placeholder="Contenu détaillé de l'événement…" onUploadImage={uploadBodyImage} />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Lieu"><Input value={form.location ?? ''} onChange={e => set('location', e.target.value)} /></Field>

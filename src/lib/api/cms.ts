@@ -99,10 +99,11 @@ export interface CmsArticle {
   published_at: string | null; created_at: string; body: string;
 }
 export interface CmsEvent {
-  id: string; title: string; slug: string; description: string;
+  id: string; title: string; slug: string; description: string; body: string;
   cover: string; cover_image_url: string; location: string; address: string;
   start_date: string; end_date: string | null; status: string;
-  is_featured: boolean; registration_url: string; created_at: string;
+  is_featured: boolean; registration_url: string; max_attendees: number | null;
+  seo_title: string; seo_description: string; created_at: string;
 }
 export interface CmsTeamMember {
   id: string; full_name: string; role: string; bio: string;
