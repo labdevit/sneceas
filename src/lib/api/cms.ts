@@ -1,4 +1,4 @@
-const BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://188.245.55.173:8000/api';
+const BASE = import.meta.env.VITE_API_BASE_URL ?? 'https://backend.snecea.com/api';
 
 function h(json = true): Record<string, string> {
   const token = localStorage.getItem('snecea_token');
