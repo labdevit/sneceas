@@ -22,6 +22,7 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { WysiwygEditor } from '@/components/ui/wysiwyg';
+import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { useLayoutContext } from '@/components/layout/AppLayout';
 import {
