@@ -212,6 +212,7 @@ function SlidesTab({ onFormChange }: { onFormChange: (open: boolean) => void }) 
   const [form, setForm] = useState<Partial<CmsSlide>>(SLIDE_BLANK);
   const [imgFile, setImgFile] = useState<File | null>(null);
   const [items, setItems] = useState<CmsSlide[]>([]);
+  const [formKey, setFormKey] = useState(0);
 
   const { data: slides = [], isLoading } = useQuery({ queryKey: ['cms-slides'], queryFn: cmsSlides.list });
   const inv = () => qc.invalidateQueries({ queryKey: ['cms-slides'] });
@@ -231,8 +232,8 @@ function SlidesTab({ onFormChange }: { onFormChange: (open: boolean) => void }) 
     onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
   });
 
-  function openCreate() { setEditing(null); setIsNew(true); setForm({ ...SLIDE_BLANK, order: items.length + 1 }); setImgFile(null); onFormChange(true); }
-  function openEdit(s: CmsSlide) { setEditing(s); setIsNew(false); setForm(s); setImgFile(null); onFormChange(true); }
+  function openCreate() { setEditing(null); setIsNew(true); setForm({ ...SLIDE_BLANK, order: items.length + 1 }); setImgFile(null); setFormKey(k => k + 1); onFormChange(true); }
+  function openEdit(s: CmsSlide) { setEditing(s); setIsNew(false); setForm(s); setImgFile(null); setFormKey(k => k + 1); onFormChange(true); }
   function closeForm() { setEditing(null); setIsNew(false); onFormChange(false); }
   function set(k: keyof CmsSlide, v: unknown) { setForm(f => ({ ...f, [k]: v })); }
 
@@ -299,7 +300,7 @@ function SlidesTab({ onFormChange }: { onFormChange: (open: boolean) => void }) 
           </Field>
           <Field label="Titre *"><Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} /></Field>
           <Field label="Sous-titre">
-            <WysiwygEditor key={editing?.id ?? 'new-slide'} value={form.subtitle ?? ''} onChange={v => set('subtitle', v)} placeholder="Sous-titre…" minHeight="80px" />
+            <WysiwygEditor key={`${formKey}-${editing?.id ?? 'new-slide'}`} value={form.subtitle ?? ''} onChange={v => set('subtitle', v)} placeholder="Sous-titre…" minHeight="80px" />
           </Field>
           <Field label="Badge"><Input value={form.badge_text ?? ''} onChange={e => set('badge_text', e.target.value)} placeholder="Syndicat National…" /></Field>
           <div className="grid grid-cols-2 gap-3">
@@ -335,6 +336,7 @@ function ServicesTab({ onFormChange }: { onFormChange: (open: boolean) => void }
   const [isNew, setIsNew] = useState(false);
   const [form, setForm] = useState<Partial<CmsService>>(SVC_BLANK);
   const [items, setItems] = useState<CmsService[]>([]);
+  const [formKey, setFormKey] = useState(0);
 
   const { data: services = [], isLoading } = useQuery({ queryKey: ['cms-services'], queryFn: cmsServices.list });
   const inv = () => qc.invalidateQueries({ queryKey: ['cms-services'] });
@@ -354,8 +356,8 @@ function ServicesTab({ onFormChange }: { onFormChange: (open: boolean) => void }
     onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
   });
 
-  function openCreate() { setEditing(null); setIsNew(true); setForm({ ...SVC_BLANK, order: items.length + 1 }); onFormChange(true); }
-  function openEdit(s: CmsService) { setEditing(s); setIsNew(false); setForm(s); onFormChange(true); }
+  function openCreate() { setEditing(null); setIsNew(true); setForm({ ...SVC_BLANK, order: items.length + 1 }); setFormKey(k => k + 1); onFormChange(true); }
+  function openEdit(s: CmsService) { setEditing(s); setIsNew(false); setForm(s); setFormKey(k => k + 1); onFormChange(true); }
   function closeForm() { setEditing(null); setIsNew(false); onFormChange(false); }
   function set(k: keyof CmsService, v: unknown) { setForm(f => ({ ...f, [k]: v })); }
 
@@ -420,10 +422,10 @@ function ServicesTab({ onFormChange }: { onFormChange: (open: boolean) => void }
             </Select>
           </Field>
           <Field label="Description courte *">
-            <WysiwygEditor key={`${editing?.id ?? 'new-svc'}-short`} value={form.short_description ?? ''} onChange={v => set('short_description', v)} placeholder="Courte description…" minHeight="80px" />
+            <WysiwygEditor key={`${formKey}-${editing?.id ?? 'new-svc'}-short`} value={form.short_description ?? ''} onChange={v => set('short_description', v)} placeholder="Courte description…" minHeight="80px" />
           </Field>
           <Field label="Description complète">
-            <WysiwygEditor key={`${editing?.id ?? 'new-svc'}-body`} value={form.body ?? ''} onChange={v => set('body', v)} placeholder="Description complète…" onUploadImage={uploadBodyImage} />
+            <WysiwygEditor key={`${formKey}-${editing?.id ?? 'new-svc'}-body`} value={form.body ?? ''} onChange={v => set('body', v)} placeholder="Description complète…" onUploadImage={uploadBodyImage} />
           </Field>
           <Field label="Ordre"><Input type="number" min={1} value={form.order ?? 1} onChange={e => set('order', parseInt(e.target.value) || 1)} className="w-24" /></Field>
           <div className="flex items-center gap-2">
@@ -450,6 +452,7 @@ function ArticlesTab({ onFormChange }: { onFormChange: (open: boolean) => void }
   const [isNew, setIsNew] = useState(false);
   const [form, setForm] = useState<Partial<CmsArticle>>(ART_BLANK);
   const [imgFile, setImgFile] = useState<File | null>(null);
+  const [formKey, setFormKey] = useState(0);
 
   const { data: articles = [], isLoading } = useQuery({ queryKey: ['cms-articles'], queryFn: cmsArticles.list });
   const inv = () => qc.invalidateQueries({ queryKey: ['cms-articles'] });
@@ -466,8 +469,8 @@ function ArticlesTab({ onFormChange }: { onFormChange: (open: boolean) => void }
     onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
   });
 
-  function openCreate() { setEditing(null); setIsNew(true); setForm(ART_BLANK); setImgFile(null); onFormChange(true); }
-  function openEdit(a: CmsArticle) { setEditing(a); setIsNew(false); setForm(a); setImgFile(null); onFormChange(true); }
+  function openCreate() { setEditing(null); setIsNew(true); setForm(ART_BLANK); setImgFile(null); setFormKey(k => k + 1); onFormChange(true); }
+  function openEdit(a: CmsArticle) { setEditing(a); setIsNew(false); setForm(a); setImgFile(null); setFormKey(k => k + 1); onFormChange(true); }
   function closeForm() { setEditing(null); setIsNew(false); onFormChange(false); }
   function set(k: keyof CmsArticle, v: unknown) { setForm(f => ({ ...f, [k]: v })); }
 
@@ -515,10 +518,10 @@ function ArticlesTab({ onFormChange }: { onFormChange: (open: boolean) => void }
           <Field label="Titre *"><Input value={form.title ?? ''} onChange={e => set('title', e.target.value)} /></Field>
           {!editing && <Field label="Slug"><Input value={form.slug || slugify(form.title ?? '')} onChange={e => set('slug', e.target.value)} /></Field>}
           <Field label="Résumé">
-            <WysiwygEditor key={`${editing?.id ?? 'new-art'}-excerpt`} value={form.excerpt ?? ''} onChange={v => set('excerpt', v)} placeholder="Résumé de l'article…" minHeight="80px" />
+            <WysiwygEditor key={`${formKey}-${editing?.id ?? 'new-art'}-excerpt`} value={form.excerpt ?? ''} onChange={v => set('excerpt', v)} placeholder="Résumé de l'article…" minHeight="80px" />
           </Field>
           <Field label="Contenu">
-            <WysiwygEditor key={`${editing?.id ?? 'new-art'}-body`} value={form.body ?? ''} onChange={v => set('body', v)} placeholder="Contenu de l'article…" onUploadImage={uploadBodyImage} />
+            <WysiwygEditor key={`${formKey}-${editing?.id ?? 'new-art'}-body`} value={form.body ?? ''} onChange={v => set('body', v)} placeholder="Contenu de l'article…" onUploadImage={uploadBodyImage} />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Auteur"><Input value={form.author_name ?? ''} onChange={e => set('author_name', e.target.value)} /></Field>
@@ -563,6 +566,7 @@ function EventsTab({ onFormChange }: { onFormChange: (open: boolean) => void }) 
   const [isNew, setIsNew] = useState(false);
   const [form, setForm] = useState<Partial<CmsEvent>>(EVT_BLANK);
   const [imgFile, setImgFile] = useState<File | null>(null);
+  const [formKey, setFormKey] = useState(0);
 
   const { data: events = [], isLoading } = useQuery({ queryKey: ['cms-events'], queryFn: cmsEvents.list });
   const inv = () => qc.invalidateQueries({ queryKey: ['cms-events'] });
@@ -582,8 +586,8 @@ function EventsTab({ onFormChange }: { onFormChange: (open: boolean) => void }) 
     onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
   });
 
-  function openCreate() { setEditing(null); setIsNew(true); setForm(EVT_BLANK); setImgFile(null); onFormChange(true); }
-  function openEdit(e: CmsEvent) { setEditing(e); setIsNew(false); setForm(e); setImgFile(null); onFormChange(true); }
+  function openCreate() { setEditing(null); setIsNew(true); setForm(EVT_BLANK); setImgFile(null); setFormKey(k => k + 1); onFormChange(true); }
+  function openEdit(e: CmsEvent) { setEditing(e); setIsNew(false); setForm(e); setImgFile(null); setFormKey(k => k + 1); onFormChange(true); }
   function closeForm() { setEditing(null); setIsNew(false); onFormChange(false); }
   function set(k: keyof CmsEvent, v: unknown) { setForm(f => ({ ...f, [k]: v })); }
   const fmtDate = (d?: string | null) => d ? new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '';
@@ -632,7 +636,7 @@ function EventsTab({ onFormChange }: { onFormChange: (open: boolean) => void }) 
             <Textarea value={form.description ?? ''} onChange={e => set('description', e.target.value)} placeholder="Courte description affichée dans les listes…" rows={2} />
           </Field>
           <Field label="Contenu détaillé (images, vidéos, mise en forme…)">
-            <WysiwygEditor key={`${editing?.id ?? 'new-evt'}-body`} value={form.body ?? ''} onChange={v => set('body', v)} placeholder="Contenu détaillé de l'événement…" onUploadImage={uploadBodyImage} />
+            <WysiwygEditor key={`${formKey}-${editing?.id ?? 'new-evt'}-body`} value={form.body ?? ''} onChange={v => set('body', v)} placeholder="Contenu détaillé de l'événement…" onUploadImage={uploadBodyImage} />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Lieu"><Input value={form.location ?? ''} onChange={e => set('location', e.target.value)} /></Field>
@@ -679,6 +683,7 @@ function TeamTab({ onFormChange }: { onFormChange: (open: boolean) => void }) {
   const [form, setForm] = useState<Partial<CmsTeamMember>>(TEAM_BLANK);
   const [imgFile, setImgFile] = useState<File | null>(null);
   const [items, setItems] = useState<CmsTeamMember[]>([]);
+  const [formKey, setFormKey] = useState(0);
 
   const { data: members = [], isLoading } = useQuery({ queryKey: ['cms-team'], queryFn: cmsTeam.list });
   const inv = () => qc.invalidateQueries({ queryKey: ['cms-team'] });
@@ -698,8 +703,8 @@ function TeamTab({ onFormChange }: { onFormChange: (open: boolean) => void }) {
     onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
   });
 
-  function openCreate() { setEditing(null); setIsNew(true); setForm({ ...TEAM_BLANK, order: items.length + 1 }); setImgFile(null); onFormChange(true); }
-  function openEdit(m: CmsTeamMember) { setEditing(m); setIsNew(false); setForm(m); setImgFile(null); onFormChange(true); }
+  function openCreate() { setEditing(null); setIsNew(true); setForm({ ...TEAM_BLANK, order: items.length + 1 }); setImgFile(null); setFormKey(k => k + 1); onFormChange(true); }
+  function openEdit(m: CmsTeamMember) { setEditing(m); setIsNew(false); setForm(m); setImgFile(null); setFormKey(k => k + 1); onFormChange(true); }
   function closeForm() { setEditing(null); setIsNew(false); onFormChange(false); }
   function set(k: keyof CmsTeamMember, v: unknown) { setForm(f => ({ ...f, [k]: v })); }
 
@@ -762,7 +767,7 @@ function TeamTab({ onFormChange }: { onFormChange: (open: boolean) => void }) {
             <Field label="Fonction *"><Input value={form.role ?? ''} onChange={e => set('role', e.target.value)} /></Field>
           </div>
           <Field label="Biographie">
-            <WysiwygEditor key={editing?.id ?? 'new-team'} value={form.bio ?? ''} onChange={v => set('bio', v)} placeholder="Biographie…" />
+            <WysiwygEditor key={`${formKey}-${editing?.id ?? 'new-team'}`} value={form.bio ?? ''} onChange={v => set('bio', v)} placeholder="Biographie…" />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Email"><Input type="email" value={form.email ?? ''} onChange={e => set('email', e.target.value)} /></Field>
@@ -1006,6 +1011,7 @@ function DocumentsTab({ onFormChange }: { onFormChange: (open: boolean) => void 
   const [isNew, setIsNew] = useState(false);
   const [form, setForm] = useState<Partial<CmsPublicDocument>>(DOC_BLANK);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [formKey, setFormKey] = useState(0);
 
   const set = (k: keyof CmsPublicDocument, v: unknown) => setForm(f => ({ ...f, [k]: v }));
   const inv = () => qc.invalidateQueries({ queryKey: ['cms-documents'] });
@@ -1023,8 +1029,8 @@ function DocumentsTab({ onFormChange }: { onFormChange: (open: boolean) => void 
     onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
   });
 
-  function openNew() { setEditing(null); setIsNew(true); setForm(DOC_BLANK); setPendingFile(null); onFormChange(true); }
-  function openEdit(d: CmsPublicDocument) { setEditing(d); setIsNew(false); setForm(d); setPendingFile(null); onFormChange(true); }
+  function openNew() { setEditing(null); setIsNew(true); setForm(DOC_BLANK); setPendingFile(null); setFormKey(k => k + 1); onFormChange(true); }
+  function openEdit(d: CmsPublicDocument) { setEditing(d); setIsNew(false); setForm(d); setPendingFile(null); setFormKey(k => k + 1); onFormChange(true); }
   function closeForm() { setEditing(null); setIsNew(false); onFormChange(false); }
   const catLabel = (key: string) => DOC_CATEGORIES.find(c => c.value === key)?.label ?? key;
 
@@ -1076,7 +1082,7 @@ function DocumentsTab({ onFormChange }: { onFormChange: (open: boolean) => void 
           </Field>
           <Field label="Ou URL directe"><Input value={form.file_url ?? ''} onChange={e => set('file_url', e.target.value)} placeholder="https://…" /></Field>
           <Field label="Description">
-            <WysiwygEditor key={editing?.id ?? 'new-doc'} value={form.description ?? ''} onChange={v => set('description', v)} placeholder="Description…" minHeight="80px" />
+            <WysiwygEditor key={`${formKey}-${editing?.id ?? 'new-doc'}`} value={form.description ?? ''} onChange={v => set('description', v)} placeholder="Description…" minHeight="80px" />
           </Field>
           <Field label="Ordre"><Input type="number" min={1} value={form.order ?? 1} onChange={e => set('order', parseInt(e.target.value) || 1)} className="w-24" /></Field>
           <div className="flex items-center gap-2">
@@ -1101,6 +1107,7 @@ function GalleryTab({ onFormChange }: { onFormChange: (open: boolean) => void })
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [extraFiles, setExtraFiles] = useState<File[]>([]);
   const [uploadingExtra, setUploadingExtra] = useState(false);
+  const [formKey, setFormKey] = useState(0);
   const mediaInputRef = useRef<HTMLInputElement>(null);
 
   const set = (k: keyof CmsGalleryImage, v: unknown) => setForm(f => ({ ...f, [k]: v }));
@@ -1140,8 +1147,8 @@ function GalleryTab({ onFormChange }: { onFormChange: (open: boolean) => void })
     onError: (e: Error) => toast({ title: 'Erreur', description: e.message, variant: 'destructive' }),
   });
 
-  function openNew() { setEditing(null); setIsNew(true); setForm({ ...GALLERY_BLANK, order: items.length + 1 }); setPendingFile(null); setExtraFiles([]); onFormChange(true); }
-  function openEdit(p: CmsGalleryImage) { setEditing(p); setIsNew(false); setForm(p); setPendingFile(null); setExtraFiles([]); onFormChange(true); }
+  function openNew() { setEditing(null); setIsNew(true); setForm({ ...GALLERY_BLANK, order: items.length + 1 }); setPendingFile(null); setExtraFiles([]); setFormKey(k => k + 1); onFormChange(true); }
+  function openEdit(p: CmsGalleryImage) { setEditing(p); setIsNew(false); setForm(p); setPendingFile(null); setExtraFiles([]); setFormKey(k => k + 1); onFormChange(true); }
   function closeForm() { setEditing(null); setIsNew(false); setExtraFiles([]); onFormChange(false); }
 
   function handleExtraFiles(e: React.ChangeEvent<HTMLInputElement>) {
@@ -1254,7 +1261,7 @@ function GalleryTab({ onFormChange }: { onFormChange: (open: boolean) => void })
 
           <Field label="Catégorie"><Input value={form.category ?? ''} onChange={e => set('category', e.target.value)} placeholder="Événements, Réunions…" /></Field>
           <Field label="Description">
-            <WysiwygEditor key={editing?.id ?? 'new-gal'} value={form.description ?? ''} onChange={v => set('description', v)} placeholder="Description…" minHeight="80px" />
+            <WysiwygEditor key={`${formKey}-${editing?.id ?? 'new-gal'}`} value={form.description ?? ''} onChange={v => set('description', v)} placeholder="Description…" minHeight="80px" />
           </Field>
           <Field label="Ordre"><Input type="number" min={1} value={form.order ?? 1} onChange={e => set('order', parseInt(e.target.value) || 1)} className="w-24" /></Field>
           <div className="flex items-center gap-2">
